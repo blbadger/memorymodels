@@ -57,20 +57,31 @@ def tokenization(example, n_ctx=512):
 		)
 	return tokens
 
+def map_dataset(train_path, test_path, split_index=50000):
+	"""
+	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
+	"""
+	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
+	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
+
+	train_dataset = train_text.map(tokenization, batched=True)
+	test_dataset = test_text.map(tokenization, batched=True)
+	train_dataset.save_to_disk(train_path)
+	test_dataset.save_to_disk(test_path)
+	print ('datasets saved to disk')
+	return
+
 def map_dataset(train_path, test_path, split_index=50000, packed=False):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
 	# fineweb loaders
-	#train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
-	#test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
+	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
+	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
 
 	# finemath loaders
 	#train_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).skip(split_index)
 	#test_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).take(split_index)
-	
-	train_text = load_dataset("haukur/enwik9", split="train")
-	test_text = load_dataset("haukur/enwik9", split="train")
 	
 	if packed:
 		batch = False
@@ -80,9 +91,9 @@ def map_dataset(train_path, test_path, split_index=50000, packed=False):
 		tokenize = tokenization
 
 	train_dataset = train_text.map(tokenize, batched=batch)
-	#test_dataset = test_text.map(tokenize, batched=batch)
+	test_dataset = test_text.map(tokenize, batched=batch)
 	train_dataset.save_to_disk(train_path)
-	#test_dataset.save_to_disk(test_path)
+	test_dataset.save_to_disk(test_path)
 	print ('Datasets saved to disk')
 	return
 
@@ -96,22 +107,22 @@ def debatch(example):
 	if not debatched_inputs: return [{'input_ids': torch}]
 	return pa.Table.from_pylist(debatched_inputs)
 
-train_path = "/home/bbadger/Desktop/enwik9-tokenized-train-c512-lpad-8k"
-test_path = "/home/bbadger/Desktop/enwik9-tokenized-test-c512-lpad-8k"
+train_path = "/home/bbadger/Desktop/fineweb-tokenized-train-c512-lpad-8k"
+test_path = "/home/bbadger/Desktop/fineweb-tokenized-test-c512-lpad-8k"
 
 if __name__ == '__main__':
 	packed=True
 	map_dataset(train_path, test_path, packed=packed)
 	train_dataset = load_from_disk(train_path)
-	#test_dataset = load_from_disk(test_path)
+	test_dataset = load_from_disk(test_path)
 	if packed:
 		train_dataset = train_dataset.filter(lambda x: len(x['input_ids']) > 0)
-		#test_dataset = test_dataset.filter(lambda x: len(x['input_ids']) > 0 )
+		test_dataset = test_dataset.filter(lambda x: len(x['input_ids']) > 0 )
 		print (train_dataset[0]['input_ids'])
-		#test_dataset = test_dataset.map(debatch, batched=True, batch_size=1)
-		#print (test_dataset[0])
-		#test_dataset.save_to_disk(test_path+'-debatched')
-		#shutil.rmtree(test_path)
+		test_dataset = test_dataset.map(debatch, batched=True, batch_size=1)
+		print (test_dataset[0])
+		test_dataset.save_to_disk(test_path+'-debatched')
+		shutil.rmtree(test_path)
 		train_dataset = train_dataset.map(debatch, batched=True, batch_size=1)
 		print (train_dataset[0])
 		train_dataset.save_to_disk(train_path+'-debatched')

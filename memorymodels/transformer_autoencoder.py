@@ -8,8 +8,34 @@ import torch.nn as nn
 import mlflow
 from datasets import load_dataset
 
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+class AutoencodingTransformerMod(nn.Module):
+
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512):
+		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
+		self.encoder = encoder_model
+		self.decoder = decoder_model
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = tokenized_length
+
+	def forward(self, input_ids, labels=None, attention_mask=None):
+		x = self.wte(input_ids.to(device))
+		x = self.encoder(inputs_embeds=x)
+
+		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
+
+		x = self.decoder(input_embeds=encoder_embedding, attention_mask=attention_mask)
+
+		output = self.lm_head(x)
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		loss = self.cel(output, labels)
+		return loss, output
 
 class AutoencodingTransformer(nn.Module):
 
@@ -73,7 +99,6 @@ def count_parameters(model):
 	print(table)
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
-
 
 
 def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):

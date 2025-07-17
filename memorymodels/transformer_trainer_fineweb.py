@@ -6,7 +6,7 @@ import mlflow
 
 from datasets import load_dataset, load_from_disk
 import transformers
-from transformers import LlamaConfig, LlamaForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -16,7 +16,7 @@ from transformer_autoencoder_tinystories import AbbreviatedModel, AutoencodingTr
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-dim = 512
+dim = 1024
 context_length = 512
 vocab_size = 8000
 llama_config_kwargs = {
@@ -31,7 +31,7 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+# model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -39,143 +39,25 @@ model = LlamaForCausalLM(configuration).float()
 # decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
+encoder_model = LlamaModel(configuration)
+decoder_model = LlamaModel(configuration)
+model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+
 # uncomment for GPT-1 initialization
 # gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/badger/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-def model_causality():
-	# Causal mask check
-	model = model.to(device)
-	one = torch.tensor([[1, 2, 5]]).to(device)
-	two = torch.tensor([[1, 2, 3]]).to(device)
-	print (model(one, labels=one).logits)
-	print (model(two, labels=two).logits)
-	print (model)
-	return
+print (model)
+train_path = "/home/badger/finemath-4-tokenized-train-c512-lpad-8k"
+test_path = "/home/badger/finemath-4-tokenized-test-c512-lpad-8k"
 
-def count_parameters(model):
-	table = PrettyTable(["Modules", "Parameters"])
-	total_params = 0
-	
-	for name, parameter in model.named_parameters():
-		if not parameter.requires_grad:
-			continue
-		params = parameter.numel()
-		table.add_row([name, params])
-		total_params += params
-	print(table)
-	print(f"Total Trainable Params: {total_params}")
-	return total_params
-
-def tokenization(example):
-    tokens = tokenizer.batch_encode_plus(
-			example['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=128,
-			padding='max_length',
-			padding_side='right'
-		)
-    return tokens
-
-
-def map_dataset(train_path, test_path, split_index=50000):
-	"""
-	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
-	"""
-	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
-	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
-
-	train_dataset = train_text.map(tokenization, batched=True)
-	test_dataset = test_text.map(tokenization, batched=True)
-	train_dataset.save_to_disk(train_path)
-	test_dataset.save_to_disk(test_path)
-	print ('datasets saved to disk')
-	return
-
-def tokenize_input(train_text, test_text):
-	train_data, test_data = [], []
-	max_length = 512
-
-	for i, sample in enumerate(train_text):
-		if i % 10000 == 0: print (i)
-		input_ids = tokenizer.encode(
-			sample['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=False,
-			max_length=max_length,
-			padding='max_length'
-		)
-
-		if len(input_ids[0]) > max_length:
-			input_set = tile_inputs(input_ids, tile_size=max_length)
-			for inp in input_set:
-				train_data.append(inp)
-		else:
-			train_data.append(input_ids)
-
-	for i in range(len(test_text)):
-		if test_text[i]:
-			input_ids = tokenizer.encode(
-				test_text[i],
-				add_special_tokens=False,
-				return_tensors='pt',
-				truncation=False,
-				max_length=max_length,
-				padding='max_length'
-			)
-
-			if len(input_ids[0]) > max_length:
-				
-				input_set = tile_inputs(
-					input_ids,
-					tile_size=max_length
-				)
-				for inp in input_set:
-					test_data.append(inp)
-			else:
-				test_data.append(input_ids)
-
-	return train_data, test_data
-
-count_parameters(model)
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c128-packed-debatched"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c128-packed-debatched"
-
-#map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
-
-tokenize=False
-if tokenize:
-	print ('tokenizing input')
-	train_data, test_data = tokenize_input(train_text, valid_text)
-	#train_data, test_data = debatch_input(train_data), debatch_input(test_data)
-
-	data_dict = {
-	'train_data': torch.stack(train_data, dim=0), 
-	'test_data': torch.stack(test_data, dim=0)
-	}
-	save_file(data_dict, '/home/bbadger/Desktop/tokenized_fineweb10b_16k.safetensors')
-	print ('tokens saved')
-
-load_input = False
-if load_input:
-	tensors = {}
-	with safe_open("/home/bbadger/Desktop/tokenized_fineweb10b_8k.safetensors", framework="pt", device="cpu") as f:
-		for key in f.keys():
-			tensors[key] = f.get_tensor(key)
-
-	train_data = list(tensors['train_data'])
-	test_data = list(tensors['test_data'])
-	print (train_data[0].shape)
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer model
@@ -186,19 +68,18 @@ def reformat_inputs(train_data, test_data):
 		test_data[i] = test_data[i].flatten()
 	return train_data, test_data
 
-
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_512_n1_c128_b32',
+	output_dir='/home/badger/finemath_autoencoding_modtransformer_d1024_n8_c512_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000

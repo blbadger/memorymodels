@@ -12,7 +12,7 @@ from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
 
-from transformer_autoencoder_tinystories import AbbreviatedModel, AutoencodingTransformer
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
@@ -22,7 +22,7 @@ vocab_size = 8000
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
-    'num_hidden_layers': 1,
+    'num_hidden_layers': 8,
     'num_attention_heads': 4,
     'vocab_size': vocab_size
 }
@@ -41,7 +41,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 encoder_model = LlamaModel(configuration)
 decoder_model = LlamaModel(configuration)
-model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # uncomment for GPT-1 initialization
 # gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)

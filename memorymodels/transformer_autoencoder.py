@@ -22,15 +22,13 @@ class AutoencodingTransformerMod(nn.Module):
 		self.tokenized_length = tokenized_length
 
 	def forward(self, input_ids, labels=None, attention_mask=None):
-		x = self.wte(input_ids.to(device))
-		x = self.encoder(inputs_embeds=x)
-
-		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		x = self.encoder(input_ids.to(device))
+		encoder_embedding = x.last_hidden_state[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
 
-		x = self.decoder(input_embeds=encoder_embedding, attention_mask=attention_mask)
+		x = self.decoder(inputs_embeds=encoder_embedding, attention_mask=attention_mask)
 
-		output = self.lm_head(x)
+		output = self.lm_head(x.last_hidden_state)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')

@@ -1,0 +1,15 @@
+artifact_uri: file:///home/badger/memorymodels/memorymodels/mlruns/0/4f7d388ea7ee4f69b6a3ba13d2b13613/artifacts
+end_time: 1752788801593
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 4f7d388ea7ee4f69b6a3ba13d2b13613
+run_name: /home/badger/finemath_autoencoding_modtransformer_d1024_n8_c512_b32
+run_uuid: 4f7d388ea7ee4f69b6a3ba13d2b13613
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1752788710058
+status: 3
+tags: []
+user_id: badger

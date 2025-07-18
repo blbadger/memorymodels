@@ -10,7 +10,7 @@ import datasets
 from datasets import load_dataset, load_from_disk
 from pathlib import Path
 
-from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer
+from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel
 import warnings
 
 warnings.filterwarnings(action='ignore')
@@ -35,9 +35,8 @@ load_path = autoencoder_path / Path('/model.safetensors')
 
 # load encoder
 pretrained_autoencoder = torch.load(os.path.autoencoder_path)
-encoder = autoencoder.encoderblocks
-model = FrozenMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, combination_dim='embedding', n_heads=4).float()
-
+encoder = TruncatedModel(pretrained_autoencoder)
+model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, combination_dim='embedding', n_heads=1).float()
 print (model)
 
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
@@ -45,7 +44,7 @@ test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
-datasets.config.IN_MEMORY_MAX_SIZE = 50e9
+datasets.config.IN_MEMORY_MAX_SIZE = 50e9 # max of 50 GB memory per device
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
@@ -53,8 +52,7 @@ mlflow.end_run()
 batch_size = 32
 # descriptive name for output
 output_dir = f'/home/bbadger/Desktop/fineweb_frozen_mixer\
-{encoder_dim}\
-c{compression}\
+_{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{tokenized_length}\

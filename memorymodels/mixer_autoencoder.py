@@ -387,6 +387,20 @@ class FrozenMemoryMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
+
+class TruncatedModel(nn.Module):
+	def __init__(self, model):
+		super.__init__()
+		self.model_wte = model.wte
+		self.model_blocks = model.encoderblocks
+	
+	def forward(self, x):
+		x = self.model_wte(x.to(device))
+		for block in self.model_blocks:
+			x = block(x)
+		output = x
+		return output
+
 class ProjMemoryMixer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4):

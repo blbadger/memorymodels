@@ -55,7 +55,7 @@ class MixerHead(nn.Module):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, causal=True, n_heads=4):
+	def __init__(self, dim, length, causal=True, n_heads=0):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -325,7 +325,6 @@ class FrozenMemoryMixer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=0):
 		super().__init__()
-		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
 		
 		self.decoder_proj = None
@@ -358,8 +357,7 @@ class FrozenMemoryMixer(nn.Module):
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		input_ids = input_ids.to(device)
-		wte_embeds = self.wte(input_ids)
-		x = self.encoder_model(wte_embeds)
+		x = self.encoder(input_ids)
 
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		if self.compression:
@@ -379,10 +377,7 @@ class FrozenMemoryMixer(nn.Module):
 			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_labels, shift_logits = labels, output
-		if self.combination_dim == 'token':
-			shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
-		else:
-			shift_logits = output[..., :-1].contiguous()
+		shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
 		shift_labels = labels[..., 1:].contiguous() 
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
@@ -390,7 +385,7 @@ class FrozenMemoryMixer(nn.Module):
 
 class TruncatedModel(nn.Module):
 	def __init__(self, model):
-		super.__init__()
+		super().__init__()
 		self.model_wte = model.wte
 		self.model_blocks = model.encoderblocks
 	

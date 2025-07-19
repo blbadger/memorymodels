@@ -7,6 +7,8 @@ from transformers import AutoTokenizer
 import torch.nn as nn
 import mlflow
 import datasets
+import safetensors
+from safetensors import safe_open
 from datasets import load_dataset, load_from_disk
 from pathlib import Path
 
@@ -30,13 +32,20 @@ compression = 1
 
 # mixer model initialization
 pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length)
-autoencoder_path = Path('/home/bbadger/Desktop/')
-load_path = autoencoder_path / Path('/model.safetensors')
-
+autoencoder_path = Path("/home/bbadger/Desktop/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+load_path = autoencoder_path / "model.safetensors"
+print (pretrained_autoencoder)
 # load encoder
-pretrained_autoencoder = torch.load(os.path.autoencoder_path)
+print (pretrained_autoencoder.wte.weight)
+safetensors.torch.load_model(pretrained_autoencoder, load_path)
+print (pretrained_autoencoder.wte.weight)
+#with safe_open(load_path, framework='pt', device=device) as f:
+#	for k in f.keys():
+#		print (k)
+#		pretrained_autoencoder[k] = f.get_tensor(k)
+
 encoder = TruncatedModel(pretrained_autoencoder)
-model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, combination_dim='embedding', n_heads=1).float()
+model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0).float()
 print (model)
 
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"

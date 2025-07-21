@@ -12,18 +12,24 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class MemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='embedding'):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='embedding', transformer_encoder=None):
 		super().__init__()
-		self.wte = nn.Embedding(n_vocab, encoder_dim)
+
+		self.use_transformer_encoder = False
+		if transformer_encoder:
+			self.encoder = transformer_encoder
+			self.use_transformer_encoder = True
 		
-		self.encoderblocks = nn.ModuleList(
-				[MixerBlock(
-					dim = encoder_dim,
-					length = length,
-					causal=True
-					)
-				for i in range(depth)]
-			).to(device)
+		else:
+			self.wte = nn.Embedding(n_vocab, encoder_dim)
+			self.encoderblocks = nn.ModuleList(
+					[MixerBlock(
+						dim = encoder_dim,
+						length = length,
+						causal=True
+						)
+					for i in range(depth)]
+				).to(device)
 
 		self.decoder_proj = None
 		self.combination_dim = combination_dim
@@ -66,10 +72,13 @@ class MemoryTransformer(nn.Module):
 
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
 		input_ids = input_ids.to(device)
-		wte_embeds = self.wte(input_ids)
-		x = wte_embeds
-		for block in self.encoderblocks:
-			x = block(x)
+		if not self.use_transformer_encoder:
+			wte_embeds = self.wte(input_ids)
+			x = wte_embeds
+			for block in self.encoderblocks:
+				x = block(x)
+		else:
+			x = self.encoder(input_ids, attention_mask=attention_mask).last_hidden_state
 		
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		if self.compression:

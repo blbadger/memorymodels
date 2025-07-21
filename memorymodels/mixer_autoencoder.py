@@ -68,7 +68,7 @@ class MixerBlock(nn.Module):
 			self.multiheaded = True
 			self.conv = MixerHead(dim, length, dim//n_heads, n_heads) # proj dim matches outer
 		else:
-			self.conv = nn.Conv1d(length, length, 1, padding='same')
+			self.conv = nn.Conv1d(length, length, 4, padding='same')
 		self.causal = causal
 
 	def forward(self, x: torch.tensor):

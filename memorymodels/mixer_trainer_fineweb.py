@@ -52,7 +52,7 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'/home/bbadger/Desktop/fineweb_ememory_mixer_k4\
+output_dir = f'/home/bbadger/Desktop/fineweb_ememory_mixer_k8\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -92,5 +92,5 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train("/home/bbadger/Desktop/finemath_autoencoder_h2_e1024c1_d1024_n8_c512_b32/checkpoint-104000")
-trainer.train()
+trainer.train("/home/bbadger/Desktop/fineweb_ememory_mixer_k8_1024c1_d1024_n8_c512_b32/checkpoint-80000")
+#trainer.train()

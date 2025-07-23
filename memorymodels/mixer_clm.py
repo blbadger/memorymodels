@@ -194,17 +194,17 @@ class MLPMixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, tie_weights=False):
+	def __init__(self, n_vocab, dim, depth, length, tie_weights=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
-				length = tokenized_length,
+				length = length,
 				expand_conv=False
 				)
 			for i in range(depth)]
-			).to(device)
+			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
 			self.wte.weight = self.lm_head.weight
@@ -212,7 +212,6 @@ class LanguageMixer(nn.Module):
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
-		x = x.to(device)
 		x = self.wte(x)
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)

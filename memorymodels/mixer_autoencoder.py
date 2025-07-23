@@ -164,7 +164,6 @@ class AutoencodingTrixer(nn.Module):
 
 	def __init__(self, n_vocab, dim, depth, length, compression=1, use_transformer_encoder=True):
 		super().__init__()
-		self.double_tokens = double_tokens
 		self.wte = nn.Embedding(n_vocab, dim)
 		llama_config_kwargs = {
 			'hidden_size': dim,
@@ -207,7 +206,7 @@ class AutoencodingTrixer(nn.Module):
 		x = x.to(device)
 
 		if self.use_transformer_encoder:
-			x = self.encoder(x, attention_mask=attention_mask).last_hidden_state
+			x = self.encoder(x).last_hidden_state
 
 		else:
 			x = self.wte(x)
@@ -231,8 +230,6 @@ class AutoencodingTrixer(nn.Module):
 		output = self.lm_head(x)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
-			if self.double_tokens:
-				labels = labels.reshape(labels.shape[0], labels.shape[1]//2, 2)
 
 		output = rearrange(output, 'b t e -> b e t')
 		loss = self.cel(output, labels)

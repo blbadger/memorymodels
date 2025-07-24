@@ -83,6 +83,46 @@ class AbbreviatedModel(nn.Module):
 			x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
 		return x
 
+class UnrolledAutoencodingTransformer(nn.Module):
+
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512):
+		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
+		self.encoder = encoder_model
+		self.decoder = decoder_model
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = tokenized_length
+		assert dim >= tokenized_length
+		unroll_factor = dim // tokenized_length #assumes
+		self.projection = nn.Linear(dim//2, dim)
+		self.dim = dim
+
+	def forward(self, input_ids, labels=None, attention_mask=None):
+		x = input_ids
+		x = x.to(device).squeeze(1)
+		x = self.wte(x)
+		x = self.encoder(x)
+
+		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		embedding_stack = []
+		# sliding window unroll
+		for i in range(self.tokenized_length):
+			sliding_window = encoder_embedding[:, i:i+self.dim//2]
+			if i:i+self.dim//2 > self.tokenized_length:
+				residual = i:i+self.dim//2 - self.tokenized_length
+				sliding_window = torch.cat(sliding_window, encoder_embedding[:, :residual], dim=2)
+			embedding_stack.append(self.projection(sliding_window))
+
+		encoder_embedding = torch.stack(embedding_stack, dim=1)
+		x = encoder_embedding
+		x = self.decoder(x)
+
+		output = self.lm_head(x)
+		output = rearrange(output, 'b t e -> b e t')
+		loss = self.cel(output, labels)
+		return loss, output
+
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])

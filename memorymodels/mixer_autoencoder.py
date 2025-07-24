@@ -230,8 +230,6 @@ class AutoencodingTrixer(nn.Module):
 		output = self.lm_head(x)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
-			if self.double_tokens:
-				labels = labels.reshape(labels.shape[0], labels.shape[1]//2, 2)
 
 		output = rearrange(output, 'b t e -> b e t')
 		loss = self.cel(output, labels)

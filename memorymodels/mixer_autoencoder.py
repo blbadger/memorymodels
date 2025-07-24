@@ -68,7 +68,7 @@ class MixerBlock(nn.Module):
 			self.multiheaded = True
 			self.conv = MixerHead(dim, length, dim//n_heads, n_heads) # proj dim matches outer
 		else:
-			self.conv = nn.Conv1d(length, length, 8, padding='same')
+			self.conv = nn.Conv1d(length, length, 1, padding='same')
 		self.causal = causal
 
 	def forward(self, x: torch.tensor):
@@ -164,7 +164,6 @@ class AutoencodingTrixer(nn.Module):
 
 	def __init__(self, n_vocab, dim, depth, length, compression=1, use_transformer_encoder=True):
 		super().__init__()
-		self.double_tokens = double_tokens
 		self.wte = nn.Embedding(n_vocab, dim)
 		llama_config_kwargs = {
 			'hidden_size': dim,
@@ -207,7 +206,7 @@ class AutoencodingTrixer(nn.Module):
 		x = x.to(device)
 
 		if self.use_transformer_encoder:
-			x = self.encoder(x, attention_mask=attention_mask).last_hidden_state
+			x = self.encoder(x).last_hidden_state
 
 		else:
 			x = self.wte(x)

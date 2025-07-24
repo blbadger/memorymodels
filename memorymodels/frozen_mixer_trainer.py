@@ -18,7 +18,7 @@ import warnings
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/azureuser/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 n_vocab = len(tokenizer)
@@ -31,8 +31,8 @@ n_layers = 8
 compression = 1
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length)
-autoencoder_path = Path("/home/bbadger/Desktop/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, kernel=8)
+autoencoder_path = Path("/home/azureuser/fineweb_autoencoding_mixer_k8_1024c1_d1024_n8_c512_b32/checkpoint-200000")
 load_path = autoencoder_path / "model.safetensors"
 print (pretrained_autoencoder)
 # load encoder
@@ -45,11 +45,11 @@ print (pretrained_autoencoder.wte.weight)
 #		pretrained_autoencoder[k] = f.get_tensor(k)
 
 encoder = TruncatedModel(pretrained_autoencoder)
-model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0).float()
+model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, n_heads=0, kernel=1).float()
 print (model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/azureuser/fineweb-tokenized-train-c512-lpad-8k-debatched"
+test_path = "/home/azureuser/fineweb-tokenized-test-c512-lpad-8k-debatched"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -58,9 +58,9 @@ train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 64
 # descriptive name for output
-output_dir = f'/home/bbadger/Desktop/fineweb_frozen_mixer\
+output_dir = f'/home/azureuser/fineweb_frozen_mixer_k8e\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\

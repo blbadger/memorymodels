@@ -90,9 +90,10 @@ class MixerBlock(nn.Module):
 		return x
 
 
+
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, unroll=True):
 		super().__init__()
 		self.double_tokens = double_tokens
 		if double_tokens:
@@ -125,6 +126,7 @@ class AutoencodingMixer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
+		self.unroll = unroll
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
@@ -143,8 +145,22 @@ class AutoencodingMixer(nn.Module):
 			encoder_embedding = self.down(encoder_embedding)
 			encoder_embedding = self.up(encoder_embedding)
 
-		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
-		x = encoder_embedding
+		if self.unroll:
+			embedding_stack = []
+			# sliding window unroll over hidden dim
+			for i in range(self.tokenized_length):
+				sliding_window = encoder_embedding[..., i:i+self.dim//2]
+				if i+self.dim//2 > self.tokenized_length:
+					residual = i+self.dim//2 - self.tokenized_length
+					# loop around to first index
+					sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
+				embedding_stack.append(sliding_window)
+			encoder_embedding = torch.cat(embedding_stack, dim=1)
+
+		else:
+			# repeat embedding in token dim
+			encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
+			x = encoder_embedding
 
 		for block in self.decoderblocks:
 			x = block(x)

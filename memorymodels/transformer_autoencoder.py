@@ -83,6 +83,7 @@ class AbbreviatedModel(nn.Module):
 			x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
 		return x
 
+
 class UnrolledAutoencodingTransformer(nn.Module):
 
 	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512):
@@ -113,8 +114,9 @@ class UnrolledAutoencodingTransformer(nn.Module):
 				residual = i+self.dim//2 - self.tokenized_length
 				# loop around to first index
 				sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
-			embedding_stack.append(self.projection(sliding_window))
+			embedding_stack.append(sliding_window)
 		encoder_embedding = torch.cat(embedding_stack, dim=1)
+		encoder_embedding = self.projection(encoder_embedding)
 		x = encoder_embedding
 		x = self.decoder(x)
 

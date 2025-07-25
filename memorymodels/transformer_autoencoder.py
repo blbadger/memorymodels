@@ -107,7 +107,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		embedding_stack = []
-		# sliding window unroll 
+		# sliding window unroll over hidden dim
 		for i in range(self.tokenized_length):
 			sliding_window = encoder_embedding[..., i:i+self.dim//2]
 			if i+self.dim//2 > self.tokenized_length:

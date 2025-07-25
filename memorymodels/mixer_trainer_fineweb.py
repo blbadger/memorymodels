@@ -18,7 +18,7 @@ import warnings
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/azureuser/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 n_vocab = len(tokenizer)
@@ -35,14 +35,15 @@ compression = 1
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
 #model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length).float()
 model = AutoencodingTrixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
 # model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
 print (model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/azureuser/fineweb-tokenized-train-c512-lpad-8k-debatched"
+test_path = "/home/azureuser/fineweb-tokenized-test-c512-lpad-8k-debatched"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -52,7 +53,7 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'/home/bbadger/Desktop/fineweb_autoencoder_transmixer\
+output_dir = f'/home/azureuser/fineweb_autoencoding_mixer_k8\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

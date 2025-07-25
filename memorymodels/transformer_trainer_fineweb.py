@@ -12,11 +12,11 @@ from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
 
-from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-dim = 1024
+dim = 512
 context_length = 512
 vocab_size = 8000
 llama_config_kwargs = {
@@ -39,21 +39,25 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-encoder_model = LlamaModel(configuration)
-decoder_model = LlamaModel(configuration)
-model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+#encoder_model = LlamaModel(configuration)
+#decoder_model = LlamaModel(configuration)
+#model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+
+model = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 # uncomment for GPT-1 initialization
 # gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
-tokenizer = AutoTokenizer.from_pretrained("/home/badger/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = "/home/badger/finemath-4-tokenized-train-c512-lpad-8k"
-test_path = "/home/badger/finemath-4-tokenized-test-c512-lpad-8k"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-left"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -79,7 +83,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',
-	output_dir='/home/badger/finemath_autoencoding_modtransformer_d1024_n8_c512_b32',
+	output_dir='/home/bbadger/fineweb_unrolledauto_transformer_512_c512_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000

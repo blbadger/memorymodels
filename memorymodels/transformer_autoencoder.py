@@ -106,15 +106,15 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		embedding_stack = []
-		# sliding window unroll
+		# sliding window unroll 
 		for i in range(self.tokenized_length):
-			sliding_window = encoder_embedding[:, i:i+self.dim//2]
-			if i:i+self.dim//2 > self.tokenized_length:
-				residual = i:i+self.dim//2 - self.tokenized_length
-				sliding_window = torch.cat(sliding_window, encoder_embedding[:, :residual], dim=2)
+			sliding_window = encoder_embedding[..., i:i+self.dim//2]
+			if i+self.dim//2 > self.tokenized_length:
+				residual = i+self.dim//2 - self.tokenized_length
+				# loop around to first index
+				sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
 			embedding_stack.append(self.projection(sliding_window))
-
-		encoder_embedding = torch.stack(embedding_stack, dim=1)
+		encoder_embedding = torch.cat(embedding_stack, dim=1)
 		x = encoder_embedding
 		x = self.decoder(x)
 

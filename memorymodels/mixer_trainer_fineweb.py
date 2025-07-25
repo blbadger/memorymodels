@@ -11,7 +11,7 @@ import datasets
 from datasets import load_dataset, load_from_disk
 
 from mixer_multiconv import MultiHeadedMixer
-from mixer_autoencoder import AutoencodingMixer, MemoryMixer, ProjMemoryMixer
+from mixer_autoencoder import AutoencodingMixer, AutoencodingTrixer, MemoryMixer, ProjMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
 
@@ -25,15 +25,17 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-encoder_dim = 1024
-decoder_dim = 1024
+encoder_dim = 512
+decoder_dim = 512
 n_layers = 8
 compression = 1
 
 # mixer model initialization
 #model = MultiHeadedMixer(n_vocab, dim, 16, length=tokenized_length, heads=32).float().to(device)
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length).float()
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length).float()
+model = AutoencodingTrixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
 # model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
@@ -91,5 +93,5 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train("/home/bbadger/Desktop/finemath_autoencoder_h2_e1024c1_d1024_n8_c512_b32/checkpoint-104000")
+#trainer.train("/home/bbadger/Desktop/fineweb_ememory_mixer_k8_1024c1_d1024_n8_c512_b32/checkpoint-80000")
 trainer.train()

@@ -69,6 +69,7 @@ class MixerBlock(nn.Module):
 			self.conv = MixerHead(dim, length, dim//n_heads, n_heads) # proj dim matches outer
 		else:
 			self.conv = nn.Conv1d(length, length, kernel, padding='same')
+
 		self.causal = causal
 
 	def forward(self, x: torch.tensor):
@@ -90,9 +91,11 @@ class MixerBlock(nn.Module):
 		return x
 
 
+
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, unroll=True):
+
 		super().__init__()
 		self.double_tokens = double_tokens
 		if double_tokens:
@@ -127,6 +130,7 @@ class AutoencodingMixer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
+		self.unroll = unroll
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
@@ -145,8 +149,22 @@ class AutoencodingMixer(nn.Module):
 			encoder_embedding = self.down(encoder_embedding)
 			encoder_embedding = self.up(encoder_embedding)
 
-		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
-		x = encoder_embedding
+		if self.unroll:
+			embedding_stack = []
+			# sliding window unroll over hidden dim
+			for i in range(self.tokenized_length):
+				sliding_window = encoder_embedding[..., i:i+self.dim//2]
+				if i+self.dim//2 > self.tokenized_length:
+					residual = i+self.dim//2 - self.tokenized_length
+					# loop around to first index
+					sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
+				embedding_stack.append(sliding_window)
+			encoder_embedding = torch.cat(embedding_stack, dim=1)
+
+		else:
+			# repeat embedding in token dim
+			encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
+			x = encoder_embedding
 
 		for block in self.decoderblocks:
 			x = block(x)
@@ -161,26 +179,12 @@ class AutoencodingMixer(nn.Module):
 		loss = self.cel(output, labels)
 		return loss, output
 
+
 class AutoencodingTrixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, use_transformer_encoder=True):
 		super().__init__()
-		self.double_tokens = double_tokens
-		if double_tokens:
-			self.wte = nn.Linear(n_vocab, dim)
-			self.n_vocab = n_vocab
-		else:
-			self.wte = nn.Embedding(n_vocab, dim)
-			
-		self.encoderblocks = nn.ModuleList(
-			[MixerBlock(
-				dim = dim,
-				length = length,
-				causal=True
-				)
-			for i in range(depth)]
-			).to(device)
-	
+		self.wte = nn.Embedding(n_vocab, dim)
 		llama_config_kwargs = {
 			'hidden_size': dim,
 			'intermediate_size': 4*dim,
@@ -188,8 +192,27 @@ class AutoencodingTrixer(nn.Module):
 			'num_attention_heads': 4,
 			'vocab_size': n_vocab
 		}
-		decoder_configuration = LlamaConfig(**llama_config_kwargs)
-		self.decoder = LlamaModel(decoder_configuration)
+		configuration = LlamaConfig(**llama_config_kwargs)
+		transformer = LlamaModel(configuration)
+
+		mixer_blocks = nn.ModuleList(
+			[MixerBlock(
+				dim = dim,
+				length = length,
+				causal=True
+				)
+			for i in range(depth)]
+			).to(device)
+
+		self.use_transformer_encoder = use_transformer_encoder
+		if use_transformer_encoder:
+			self.encoder = transformer
+			self.decoderblocks = mixer_blocks
+		else:
+			# transformer decoder
+			self.encoderblocks = mixer_blocks
+			self.decoder = transformer
+
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = length
@@ -198,17 +221,17 @@ class AutoencodingTrixer(nn.Module):
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
 
-	def forward(self, input_ids, labels=None, **kwargs):
+	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
 		x = input_ids
 		x = x.to(device)
-		if self.double_tokens:
-			x_pairs = x.reshape(x.shape[0], x.shape[1]//2, 2)
-			# makes a two hot tensor
-			inputs = torch.nn.functional.one_hot(x_pairs[:, :, 0], self.n_vocab) + torch.nn.functional.one_hot(x_pairs[:, :, 1], self.n_vocab)
 
-		x = self.wte(x)
-		for block in self.encoderblocks:
-			x = block(x)
+		if self.use_transformer_encoder:
+			x = self.encoder(x).last_hidden_state
+
+		else:
+			x = self.wte(x)
+			for block in self.encoderblocks:
+				x = block(x)
 
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		if self.compression:
@@ -216,14 +239,17 @@ class AutoencodingTrixer(nn.Module):
 			encoder_embedding = self.up(encoder_embedding)
 
 		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
+
 		x = encoder_embedding
-		x = self.decoder(x)
-		
+		if self.use_transformer_encoder:
+			for block in self.decoderblocks:
+				x = block(x)
+		else:
+			x = self.decoder(x)
+			
 		output = self.lm_head(x)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
-			if self.double_tokens:
-				labels = labels.reshape(labels.shape[0], labels.shape[1]//2, 2)
 
 		output = rearrange(output, 'b t e -> b e t')
 		loss = self.cel(output, labels)

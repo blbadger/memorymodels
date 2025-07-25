@@ -12,8 +12,10 @@ from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
 
-from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod
+
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import MemoryTransformer
+
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
@@ -47,18 +49,24 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, dim, dim, depth, context_length, compression=8, combination_dim='token', transformer_encoder=encoder_model)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
+model = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 # uncomment for GPT-1 initialization
 # gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+
 
 tokenizer = AutoTokenizer.from_pretrained("/home/azureuser/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
+
 train_path = "/home/azureuser/fineweb-tokenized-train-c512-lpad-8k-debatched"
 test_path = "/home/azureuser/fineweb-tokenized-test-c512-lpad-8k-debatched"
+
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)

@@ -110,7 +110,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		# sliding window unroll over hidden dim
 		for i in range(self.tokenized_length):
 			sliding_window = encoder_embedding[..., i:i+self.dim//2]
-			if i+self.dim//2 > self.tokenized_length:
+			if i+self.dim//2 > self.dim:
 				residual = i+self.dim//2 - self.tokenized_length
 				# loop around to first index
 				sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)

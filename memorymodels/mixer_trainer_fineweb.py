@@ -14,13 +14,17 @@ from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTrixer, MemoryMixer, ProjMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
+from dotenv import load_dotenv
+
+load_dotenv()
+checkpoint_root = os.getenv('CHECKPOINT_ROOT')
+data_root = os.getenv('DATA_ROOT')
 
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
-
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
@@ -29,20 +33,21 @@ encoder_dim = 512
 decoder_dim = 512
 n_layers = 8
 compression = 1
+heads = 0
+kernel = 8
 
 # mixer model initialization
-#model = MultiHeadedMixer(n_vocab, dim, 16, length=tokenized_length, heads=32).float().to(device)
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
-#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length).float()
-model = AutoencodingTrixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float()
+# model = AutoencodingTrixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
 # model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
 print (model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -52,7 +57,7 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'/home/bbadger/Desktop/fineweb_autoencoder_transmixer\
+output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -92,5 +97,4 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train("/home/bbadger/Desktop/fineweb_ememory_mixer_k8_1024c1_d1024_n8_c512_b32/checkpoint-80000")
 trainer.train()

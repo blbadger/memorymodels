@@ -12,7 +12,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class MemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='embedding', transformer_encoder=None):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1):
 		super().__init__()
 
 		self.use_transformer_encoder = False
@@ -26,7 +26,9 @@ class MemoryTransformer(nn.Module):
 					[MixerBlock(
 						dim = encoder_dim,
 						length = length,
-						causal=True
+						causal = True,
+						n_heads = n_heads,
+						kernel = kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -115,7 +117,7 @@ class MemoryTransformer(nn.Module):
 
 class ProjMemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -123,7 +125,9 @@ class ProjMemoryTransformer(nn.Module):
 				[MixerBlock(
 					dim = encoder_dim,
 					length = length,
-					causal=True
+					causal=True,
+					n_heads = n_heads,
+					kernel = kernel
 					)
 				for i in range(depth)]
 			).to(device)

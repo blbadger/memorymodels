@@ -20,7 +20,7 @@ def FeedForward(dim, expansion_factor=4):
 
 class MixerHead(nn.Module):
 
-	def __init__(self, dim, length, hidden_dim, n_heads):
+	def __init__(self, dim, length, hidden_dim, n_heads=4, kernel=1):
 		super().__init__()
 		self.n_heads = n_heads
 		self.proj_head = nn.ModuleList(
@@ -29,14 +29,13 @@ class MixerHead(nn.Module):
 			).to(device)
 
 		self.convs = nn.ModuleList(
-			[nn.Conv1d(length, length, 1)
+			[nn.Conv1d(length, length, kernel, padding='same')
 			for i in range(n_heads)]
 			)
 		self.out_proj = nn.Linear(dim, dim)
 	
 
 	def forward(self, x: torch.tensor):
-
 		for i in range(len(self.convs)):
 			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
@@ -55,7 +54,7 @@ class MixerHead(nn.Module):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, causal=True, n_heads=0):
+	def __init__(self, dim, length, causal=True, n_heads=0, kernel=1):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -66,9 +65,9 @@ class MixerBlock(nn.Module):
 		self.multiheaded = False
 		if n_heads > 0:
 			self.multiheaded = True
-			self.conv = MixerHead(dim, length, dim//n_heads, n_heads) # proj dim matches outer
+			self.conv = MixerHead(dim, length, dim//n_heads, n_heads=n_heads, kernel=kernel) # proj dim matches outer
 		else:
-			self.conv = nn.Conv1d(length, length, 1, padding='same')
+			self.conv = nn.Conv1d(length, length, kernel, padding='same')
 		self.causal = causal
 
 	def forward(self, x: torch.tensor):
@@ -90,10 +89,9 @@ class MixerBlock(nn.Module):
 		return x
 
 
-
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, unroll=True):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True):
 		super().__init__()
 		self.double_tokens = double_tokens
 		if double_tokens:
@@ -106,7 +104,9 @@ class AutoencodingMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = length,
-				causal = True
+				causal = True,
+				n_heads = n_heads,
+				kernel = kernel
 				)
 			for i in range(depth)]
 			).to(device)
@@ -115,7 +115,9 @@ class AutoencodingMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = length, 
-				causal = True
+				causal = True,
+				n_heads = n_heads,
+				kernel = kernel
 				)
 			for i in range(depth)]
 			)
@@ -135,8 +137,9 @@ class AutoencodingMixer(nn.Module):
 		x = x.to(device)
 		if self.double_tokens:
 			x_pairs = x.reshape(x.shape[0], x.shape[1]//2, 2)
-			# makes a two hot tensor
-			inputs = torch.nn.functional.one_hot(x_pairs[:, :, 0], self.n_vocab) + torch.nn.functional.one_hot(x_pairs[:, :, 1], self.n_vocab)
+			# implements a two hot tensor
+			inputs = torch.nn.functional.one_hot(x_pairs[:, :, 0], self.n_vocab) + \
+					 torch.nn.functional.one_hot(x_pairs[:, :, 1], self.n_vocab)
 
 		x = self.wte(x)
 		for block in self.encoderblocks:
@@ -163,7 +166,7 @@ class AutoencodingMixer(nn.Module):
 		else:
 			# repeat embedding in token dim
 			encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
-			
+
 		x = encoder_embedding
 		for block in self.decoderblocks:
 			x = block(x)
@@ -179,9 +182,9 @@ class AutoencodingMixer(nn.Module):
 		return loss, output
 
 
-class AutoencodingTrixer(nn.Module):
+class AutoencodingTransfixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, use_transformer_encoder=True):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, use_transformer_encoder=True, n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		llama_config_kwargs = {
@@ -198,7 +201,9 @@ class AutoencodingTrixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = length,
-				causal=True
+				causal = True,
+				n_heads = n_heads,
+				kernel = 1
 				)
 			for i in range(depth)]
 			).to(device)
@@ -257,7 +262,7 @@ class AutoencodingTrixer(nn.Module):
 
 class MemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -265,8 +270,9 @@ class MemoryMixer(nn.Module):
 				[MixerBlock(
 					dim = encoder_dim,
 					length = length,
-					causal=True,
-					n_heads = n_heads
+					causal = True,
+					n_heads = n_heads,
+					kernel = kernel
 					)
 				for i in range(depth)]
 			).to(device)
@@ -279,7 +285,8 @@ class MemoryMixer(nn.Module):
 						dim = dim,
 						length = length+1,
 						causal=True,
-						n_heads = 0 # no heads for decoder
+						n_heads = 0, # no heads for decoder
+						kernel = 1  # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -293,7 +300,8 @@ class MemoryMixer(nn.Module):
 						dim = dim + encoder_dim//compression,
 						length = length,
 						causal=True,
-						n_heads = 0 # no heads for decoder
+						n_heads = 0, # no heads for decoder
+						kernel = 1 # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -317,7 +325,8 @@ class MemoryMixer(nn.Module):
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
-			#encoder_embedding = self.up(encoder_embedding)
+			if self.combination_dim == 'token':
+				encoder_embedding = self.up(encoder_embedding)
 
 		decoder_embeds = self.decoder_wte(input_ids)
 		if self.combination_dim == 'token':
@@ -350,7 +359,7 @@ class FrozenMemoryMixer(nn.Module):
 	Masked mixer memory model using a frozen pre-trained encoder. Implemented for token concatenation.
 	"""
 
-	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=0):
+	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1):
 		super().__init__()
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
 		
@@ -366,7 +375,8 @@ class FrozenMemoryMixer(nn.Module):
 				dim = dim,
 				length = length+1,
 				causal=True,
-				n_heads = 0 # no heads for decoder
+				n_heads = 0,
+				kernel = kernel 
 				)
 			for i in range(depth)]
 		).to(device)
@@ -425,7 +435,7 @@ class TruncatedModel(nn.Module):
 
 class ProjMemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -433,7 +443,9 @@ class ProjMemoryMixer(nn.Module):
 				[MixerBlock(
 					dim = encoder_dim,
 					length = length,
-					causal=True
+					causal=True,
+					n_heads=n_heads,
+					kernel=kernel
 					)
 				for i in range(depth)]
 			).to(device)
@@ -442,7 +454,9 @@ class ProjMemoryMixer(nn.Module):
 				[MixerBlock(
 					dim = dim,
 					length = length,
-					causal=True
+					causal=True,
+					n_heads=n_heads,
+					kernel=kernel
 					)
 				for i in range(depth)]
 			).to(device)
@@ -664,7 +678,7 @@ if __name__ == '__main__':
 
 
 	model.train()
-	trainer.train('/home/bbadger/Desktop/autoencoding_mixer_1024_n16_b32/checkpoint-60000')
+	trainer.train()
 	for name, param in model.named_parameters():
 		print (name)
 

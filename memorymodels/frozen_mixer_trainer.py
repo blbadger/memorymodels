@@ -15,10 +15,14 @@ from pathlib import Path
 from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel
 import warnings
 
+load_dotenv()
+data_root = os.getenv('DATA_ROOT')
+checkpoint_root = os.getenv('CHECKPOINT_ROOT')
+
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 n_vocab = len(tokenizer)
@@ -29,27 +33,26 @@ encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 8
 compression = 1
+n_heads = 0
+kernel = 1
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length)
-autoencoder_path = Path("/home/bbadger/Desktop/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
+autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
 load_path = autoencoder_path / "model.safetensors"
 print (pretrained_autoencoder)
+
 # load encoder
 print (pretrained_autoencoder.wte.weight)
 safetensors.torch.load_model(pretrained_autoencoder, load_path)
 print (pretrained_autoencoder.wte.weight)
-#with safe_open(load_path, framework='pt', device=device) as f:
-#	for k in f.keys():
-#		print (k)
-#		pretrained_autoencoder[k] = f.get_tensor(k)
 
 encoder = TruncatedModel(pretrained_autoencoder)
 model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0).float()
 print (model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -60,7 +63,7 @@ mlflow.end_run()
 
 batch_size = 32
 # descriptive name for output
-output_dir = f'/home/bbadger/Desktop/fineweb_frozen_mixer\
+output_dir = f'{checkpoint_root}/fineweb_frozen_mixer\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -100,5 +103,4 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train("/home/bbadger/Desktop/finemath_autoencoder_h2_e1024c1_d1024_n8_c512_b32/checkpoint-104000")
 trainer.train()

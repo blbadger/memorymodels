@@ -1,3 +1,4 @@
+import os
 import torch
 from einops import rearrange
 import transformers
@@ -11,8 +12,17 @@ from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
+import warnings
+from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
+
+warnings.filterwarnings(action='ignore')
+
+load_dotenv()
+checkpoint_root = os.getenv('CHECKPOINT_ROOT')
+data_root = os.getenv('DATA_ROOT')
+
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
@@ -47,17 +57,14 @@ encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_leng
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
 model = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
-# uncomment for GPT-1 initialization
-# gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
-# model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-left"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -72,6 +79,15 @@ def reformat_inputs(train_data, test_data):
 		test_data[i] = test_data[i].flatten()
 	return train_data, test_data
 
+
+# descriptive name for output
+output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
+_{encoder_dim}\
+c{compression}\
+_d{decoder_dim}\
+_n{n_layers}\
+_c{tokenized_length}_b32'
+
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
@@ -83,7 +99,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',
-	output_dir='/home/bbadger/fineweb_unrolledauto_transformer_512_c512_b32',
+	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -96,6 +112,12 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
+
+# save driver code snapshot in checkpoint dir
+code_path = os.path.abspath(__file__)
+if not os.path.isdir(output_dir):
+	os.mkdir(output_dir)
+shutil.copy(code_path, output_dir)
 
 model.train()
 trainer.train() 

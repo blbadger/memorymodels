@@ -2,6 +2,8 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import torch
 from transformers import AutoTokenizer
+from dotenv import load_dotenv
+
 
 class TextDataset(torch.utils.data.Dataset):
     """
@@ -40,13 +42,11 @@ def get_training_corpus(dataset, batch_size=1):
 
 
 if __name__ == '__main__':
-    dataset = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT")
-    #dataset = load_dataset("roneneldan/TinyStories", split="train")
-    #dataset = load_dataset("haukur/enwik9", split="train")
-    old_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_128k")
+    load_dotenv()
+    data_root = os.getenv('DATA_ROOT')
 
-    # Create the dataset, and process the full file. 
-    #dataset = TextDataset(dataset, batch_size=1024)
+    dataset = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT")
+    old_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 
     # DataLoader for efficient batch processing
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
@@ -54,5 +54,5 @@ if __name__ == '__main__':
 
     # Train the new tokenizer
     tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 2048000)
-    tokenizer.save_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_2m")
+    tokenizer.save_pretrained(f"{data_root}/tokenizer_fineweb_2m")
     print ("Tokenizer saved")

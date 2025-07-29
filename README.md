@@ -47,5 +47,5 @@ This project is currently focused on training efficiency with respect to compres
 In the future functional benchmarks will likely be used to supplement the compression data.
 
 ### TODOs
-- [ ] Refactor driver code to keep model implementations separate from trainers and initializers
-- [ ] Refactor hardcoded paths into envs, one for each server node
+- [x] Refactor driver code to keep model implementations separate from trainers and initializers
+- [x] Refactor hardcoded paths into envs, one for each server node

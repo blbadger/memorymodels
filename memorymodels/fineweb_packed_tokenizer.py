@@ -3,8 +3,9 @@ from transformers import AutoTokenizer
 from datasets import load_dataset, load_from_disk, Dataset
 import pyarrow as pa
 import shutil
+from dotenv import load_dotenv
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_enwik9_8k")
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 all_tokens = torch.tensor([])
@@ -71,17 +72,19 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
-def map_dataset(train_path, test_path, split_index=50000, packed=False):
+def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
-	# fineweb loaders
-	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
-	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
+	if fineweb:
+		# fineweb loaders
+		train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
+		test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
 
-	# finemath loaders
-	#train_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).skip(split_index)
-	#test_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).take(split_index)
+	else:
+		# finemath loaders
+		train_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).skip(split_index)
+		test_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).take(split_index)
 	
 	if packed:
 		batch = False
@@ -107,11 +110,15 @@ def debatch(example):
 	if not debatched_inputs: return [{'input_ids': torch}]
 	return pa.Table.from_pylist(debatched_inputs)
 
-train_path = "/home/bbadger/Desktop/fineweb-tokenized-train-c512-lpad-8k"
-test_path = "/home/bbadger/Desktop/fineweb-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/Desktop/fineweb-tokenized-test-c512-lpad-8k"
 
 if __name__ == '__main__':
+	load_dotenv()
+	data_root = os.getenv('DATA_ROOT')
+
 	packed=True
+	
 	map_dataset(train_path, test_path, packed=packed)
 	train_dataset = load_from_disk(train_path)
 	test_dataset = load_from_disk(test_path)

@@ -3,7 +3,6 @@ import torch
 from einops import rearrange
 import torch.nn as nn
 
-
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
@@ -12,7 +11,7 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=2):
+def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
@@ -59,8 +58,6 @@ class DoubleMixerBlock(nn.Module):
 
 			else:
 				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				# # softmax weights
-				# self.conv.weight.data = self.softmax(self.conv.weight.data)
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
@@ -83,7 +80,7 @@ class DoubleMixerBlock(nn.Module):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length=512, expand_conv=False):
+	def __init__(self, dim, length=512, expand_conv=False, kernel=1, n_heads=0):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -93,7 +90,10 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1, padding='same')
+			if n_heads > 0:
+				self.conv = MixerHead(dim, length, dim//n_heads, n_heads)
+			else:
+				self.conv = nn.Conv1d(length, length, kernel, padding='same')
 		self.expand_conv = expand_conv
 
 	def forward(self, x: torch.tensor):
@@ -142,13 +142,12 @@ class MixerHead(nn.Module):
 			)
 
 		self.out_proj = nn.Linear(dim*n_heads, dim)
-		self.softmax = nn.Softmax(dim=-1)
 		self.GeLU = nn.GELU()
 
 	def forward(self, x: torch.tensor):
 
 		for i in range(len(self.convs)):
-			masked_conv = self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d')))
+			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
 		hidden_layer = []
@@ -164,6 +163,10 @@ class MixerHead(nn.Module):
 		return hidden_layer
 
 class MLPMixerBlock(nn.Module):
+	"""
+	Matrix multiply-based implementation of inter-token weights (instead of 1D convs). Less performant and
+	flexible than 1D convs, prefer that unless there is a specific reason to use matmults.
+	"""
 
 	def __init__(self, dim, length, **kwargs):
 		super().__init__()
@@ -194,14 +197,17 @@ class MLPMixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, tie_weights=False):
+	def __init__(self, n_vocab, dim, depth, length, tie_weights=False, n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
+		if n_heads > 0:
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
 				length = length,
-				expand_conv=False
+				expand_conv = False,
+				n_heads = n_heads,
+				kernel = kernel
 				)
 			for i in range(depth)]
 			)

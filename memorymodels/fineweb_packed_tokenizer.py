@@ -42,18 +42,18 @@ def packed_tokenization(example, n_ctx=512):
 	tokens = torch.flatten(tokens, start_dim=0)
 	batch_size = len(tokens) // n_ctx
 	length = n_ctx * batch_size
-	#tokens = tokenizer.pad(tokens, padding='max_length', max_length=length, padding_side='right')
 	tokens = tokens[:length].reshape(batch_size, n_ctx)
 	return {'input_ids': tokens}
 
 def tokenization(example, n_ctx=512):
+	# global padding_side defined outside fn
 	tokens = tokenizer.batch_encode_plus(
 			example['text'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
 			padding='max_length',
-			padding_side='left', 
+			padding_side=padding_side, 
 			max_length=n_ctx
 		)
 	return tokens
@@ -110,15 +110,16 @@ def debatch(example):
 	if not debatched_inputs: return [{'input_ids': torch}]
 	return pa.Table.from_pylist(debatched_inputs)
 
-train_path = f"{data_root}/fineweb-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/Desktop/fineweb-tokenized-test-c512-lpad-8k"
+# user-defined vals
+packed = False
+padding_side = 'left'
+pad_contraction = '-lpad' if padding_side == 'left' else ''
+train_path = f"{data_root}/fineweb-tokenized-train-c512{padding_side}-8k"
+test_path = f"{data_root}/fineweb-tokenized-test-c512{padding_side}-8k"
 
 if __name__ == '__main__':
 	load_dotenv()
 	data_root = os.getenv('DATA_ROOT')
-
-	packed=True
-	
 	map_dataset(train_path, test_path, packed=packed)
 	train_dataset = load_from_disk(train_path)
 	test_dataset = load_from_disk(test_path)

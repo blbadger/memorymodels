@@ -88,18 +88,18 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
+output_dir = f'{checkpoint_root}/fineweb_autotrans_unroll\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b32'
+_c{context_length}_b64x2'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
@@ -127,4 +127,4 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 model.train()
-trainer.train() 
+trainer.train()

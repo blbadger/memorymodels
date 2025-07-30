@@ -1,15 +1,21 @@
 import torch
+import os
 from transformers import AutoTokenizer
 from datasets import load_dataset, load_from_disk, Dataset
 import pyarrow as pa
 import shutil
 from dotenv import load_dotenv
 
+
+load_dotenv()
+data_root = os.getenv('DATA_ROOT')
+
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 all_tokens = torch.tensor([])
-def all_packed_tokenization(example, n_ctx=512):
+def all_packed_tokenization(example):
+	n_ctx = context_length # global context_length
 	tokens = tokenizer.encode_plus(
 			example['text'],
 			add_special_tokens=False,
@@ -31,7 +37,8 @@ def all_packed_tokenization(example, n_ctx=512):
 		return {'input_ids': []}
 	
 
-def packed_tokenization(example, n_ctx=512):
+def packed_tokenization(example):
+	n_ctx = context_length # global context_length
 	tokens = tokenizer.encode_plus(
 			example['text'],
 			add_special_tokens=False,
@@ -45,8 +52,9 @@ def packed_tokenization(example, n_ctx=512):
 	tokens = tokens[:length].reshape(batch_size, n_ctx)
 	return {'input_ids': tokens}
 
-def tokenization(example, n_ctx=512):
-	# global padding_side defined outside fn
+def tokenization(example):
+	# global padding_side, context_length
+	n_ctx = context_length
 	tokens = tokenizer.batch_encode_plus(
 			example['text'],
 			add_special_tokens=False,
@@ -58,21 +66,8 @@ def tokenization(example, n_ctx=512):
 		)
 	return tokens
 
-def map_dataset(train_path, test_path, split_index=50000):
-	"""
-	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
-	"""
-	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
-	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
 
-	train_dataset = train_text.map(tokenization, batched=True)
-	test_dataset = test_text.map(tokenization, batched=True)
-	train_dataset.save_to_disk(train_path)
-	test_dataset.save_to_disk(test_path)
-	print ('datasets saved to disk')
-	return
-
-def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True):
+def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True, context=512):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
@@ -111,16 +106,17 @@ def debatch(example):
 	return pa.Table.from_pylist(debatched_inputs)
 
 # user-defined vals
+fineweb = True
 packed = False
+prefix = 'fineweb' if fineweb else 'finemath'
+context_length = 512
 padding_side = 'left'
 pad_contraction = '-lpad' if padding_side == 'left' else ''
-train_path = f"{data_root}/fineweb-tokenized-train-c512{padding_side}-8k"
-test_path = f"{data_root}/fineweb-tokenized-test-c512{padding_side}-8k"
+train_path = f"{data_root}/{prefix}-tokenized-train-c{context_length}{pad_contraction}-8k"
+test_path = f"{data_root}/{prefix}-tokenized-test-c{context_length}{pad_contraction}-8k"
 
 if __name__ == '__main__':
-	load_dotenv()
-	data_root = os.getenv('DATA_ROOT')
-	map_dataset(train_path, test_path, packed=packed)
+	map_dataset(train_path, test_path, packed=packed, fineweb=fineweb)
 	train_dataset = load_from_disk(train_path)
 	test_dataset = load_from_disk(test_path)
 	if packed:

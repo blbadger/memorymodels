@@ -11,7 +11,7 @@ import datasets
 from datasets import load_dataset, load_from_disk
 
 from mixer_multiconv import MultiHeadedMixer
-from mixer_autoencoder import AutoencodingMixer, AutoencodingTrixer, MemoryMixer, ProjMemoryMixer
+from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
 from dotenv import load_dotenv
@@ -39,7 +39,7 @@ kernel = 8
 # mixer model initialization
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float()
-# model = AutoencodingTrixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+# model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
 # model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()

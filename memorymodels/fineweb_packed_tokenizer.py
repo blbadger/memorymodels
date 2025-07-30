@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 data_root = os.getenv('DATA_ROOT')
 
-tokenizer = AutoTokenizer.from_pretrained(f"{data_root}tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 all_tokens = torch.tensor([])
@@ -108,7 +108,7 @@ def debatch(example):
 # user-defined vals
 fineweb = True
 packed = False
-prefix = 'fineweb' if fineweb else 'finemath'
+prefix = 'fineweb-edu' if fineweb else 'finemath'
 context_length = 512
 padding_side = 'left'
 pad_contraction = '-lpad' if padding_side == 'left' else ''

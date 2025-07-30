@@ -13,6 +13,7 @@ from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
 import warnings
+import shutil
 from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
@@ -23,16 +24,19 @@ load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
 
-
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-dim = 512
+encoder_dim = 512
+decoder_dim = 512
 context_length = 512
+compression = 1
+n_layers = 8
+
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
+    'hidden_size': encoder_dim,
+    'intermediate_size': 4*encoder_dim,
+    'num_hidden_layers': n_layers,
     'num_attention_heads': 4,
     'vocab_size': vocab_size
 }
@@ -56,9 +60,9 @@ configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-model = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
@@ -86,7 +90,7 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b32'
+_c{context_length}_b32'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(

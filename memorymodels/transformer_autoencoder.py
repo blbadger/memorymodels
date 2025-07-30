@@ -86,7 +86,7 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
 
-	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512):
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoder = encoder_model
@@ -98,6 +98,10 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		unroll_factor = dim // tokenized_length #assumes
 		self.projection = nn.Linear(dim//2, dim)
 		self.dim = dim
+		self.compression = compression
+		if compression > 1:
+			self.down = nn.Linear(dim, dim//compression)
+			self.up = nn.Linear(dim//compression, dim)
 
 	def forward(self, input_ids, labels=None, attention_mask=None):
 		x = input_ids
@@ -106,6 +110,9 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		x = self.encoder(x)
 
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		if self.compression:
+			encoder_embedding = self.down(encoder_embedding)
+			encoder_embedding = self.up(encoder_embedding)
 		embedding_stack = []
 		# sliding window unroll over hidden dim
 		for i in range(self.tokenized_length):

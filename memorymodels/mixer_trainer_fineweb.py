@@ -46,8 +46,8 @@ model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_he
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)

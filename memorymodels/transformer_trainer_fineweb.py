@@ -17,6 +17,7 @@ import shutil
 from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
+from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
 
@@ -26,11 +27,11 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 512
+encoder_dim = 256
 decoder_dim = 512
-context_length = 512
+context_length = 256
 compression = 1
-n_layers = 8
+n_layers = 16
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -42,7 +43,7 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+# configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
 # model = LlamaForCausalLM(configuration).float()
@@ -57,18 +58,20 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+# encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+# decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
+# model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
+
+model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=h_heads)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)

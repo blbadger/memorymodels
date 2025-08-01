@@ -13,14 +13,14 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class VariableMemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4):
 		super().__init__()
 
 		llama_config_kwargs = {
 			'hidden_size': dim,
 			'intermediate_size': 4*dim,
 			'num_hidden_layers': depth,
-			'num_attention_heads': 4,
+			'num_attention_heads': n_heads,
 			'vocab_size': n_vocab
 		}
 		decoder_configuration = LlamaConfig(**llama_config_kwargs)
@@ -28,22 +28,20 @@ class VariableMemoryTransformer(nn.Module):
 		self.wte = nn.Embedding(n_vocab, dim)
 
 		self.decoder_proj = None
-		self.combination_dim = combination_dim
-					
-		if combination_dim == 'token':
-			llama_config_kwargs = {
-				'hidden_size': dim,
-				'intermediate_size': 4*dim,
-				'num_hidden_layers': depth,
-				'num_attention_heads': 4,
-				'vocab_size': n_vocab
-			}
-			decoder_configuration = LlamaConfig(**llama_config_kwargs)
-			self.decoder = LlamaModel(decoder_configuration)
-			self.decoder_wte = nn.Embedding(n_vocab, dim)
-			self.lm_head = nn.Linear(dim, n_vocab, bias=False)
-			if encoder_dim != dim:
-				self.decoder_proj = nn.Linear(encoder_dim, dim)
+
+		llama_config_kwargs = {
+			'hidden_size': dim,
+			'intermediate_size': 4*dim,
+			'num_hidden_layers': depth,
+			'num_attention_heads': n_heads,
+			'vocab_size': n_vocab
+		}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.decoder = LlamaModel(decoder_configuration)
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		if encoder_dim != dim:
+			self.decoder_proj = nn.Linear(encoder_dim, dim)
 
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = length
@@ -70,7 +68,7 @@ class VariableMemoryTransformer(nn.Module):
 					encoder_embedding = self.up(encoder_embedding)
 				embedding_array.append(encoder_embedding)
 			i += self.tokenized_length
-			
+
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		for c in range(chunks):
 			decoder_embeds = self.decoder_wte(input_ids)

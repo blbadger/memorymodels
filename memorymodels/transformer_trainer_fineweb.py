@@ -71,7 +71,7 @@ n_vocab = len(tokenizer)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -88,7 +88,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autotrans_unroll\
+output_dir = f'{checkpoint_root}/fineweb_memorytrans_256c1024\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

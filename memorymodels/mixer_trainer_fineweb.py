@@ -29,17 +29,22 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-encoder_dim = 512
-decoder_dim = 512
+encoder_dim = 1024
+decoder_dim = 1024
 n_layers = 8
-compression = 1
+compression = 8
 heads = 0
-kernel = 8
+kernel = 4
 
 # mixer model initialization
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
+<<<<<<< HEAD
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel).float()
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+=======
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True).float()
+# model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+>>>>>>> dc75de5 (minor changes)
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
@@ -57,17 +62,17 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
+output_dir = f'{checkpoint_root}/fineweb_automixer_k8_unroll\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b32'
+_c{tokenized_length}_b64x2'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -97,4 +102,5 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
+#trainer.train('/home/azureuser/fineweb_automixer_k8_512c4_d512_n16_c512_b64x2/checkpoint-32000')
 trainer.train()

@@ -32,6 +32,7 @@ decoder_dim = 512
 context_length = 256
 compression = 1
 n_layers = 16
+n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -63,7 +64,7 @@ llama_config_kwargs = {
 
 # model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
 
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=h_heads)
+model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token

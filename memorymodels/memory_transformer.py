@@ -64,8 +64,7 @@ class VariableMemoryTransformer(nn.Module):
 			encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 			if self.compression:
 				encoder_embedding = self.down(encoder_embedding)
-				if self.combination_dim == 'token':
-					encoder_embedding = self.up(encoder_embedding)
+				encoder_embedding = self.up(encoder_embedding)
 			if self.decoder_proj:
 				encoder_embedding = self.decoder_proj(encoder_embedding)
 			embedding_array.append(encoder_embedding)
@@ -74,15 +73,14 @@ class VariableMemoryTransformer(nn.Module):
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)
 		total_loss = 0
-		for c in range(self.chunks):
-			
-			decoder_embeds = input_embeddings[:, c:c+self.tokenized_length]
+		for c in range(self.chunks): # self.chunks
+			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 			x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
 			if attention_mask is not None:
 				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
-		
+			
 			# feed pre-concatenated input embeddings to the transformer decoder
-			x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
+			x = self.decoder(inputs_embeds=x)
 			output = self.lm_head(x.last_hidden_state)
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')

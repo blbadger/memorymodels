@@ -91,12 +91,12 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False):
 		super().__init__()
 		self.double_tokens = double_tokens
+		self.n_vocab = n_vocab
 		if double_tokens:
 			self.wte = nn.Linear(n_vocab, dim)
-			self.n_vocab = n_vocab
 		else:
 			self.wte = nn.Embedding(n_vocab, dim)
 			
@@ -131,9 +131,13 @@ class AutoencodingMixer(nn.Module):
 		self.unroll = unroll
 		self.dim = dim
 		self.projection = nn.Linear(dim//2, dim)
+		self.random_input = random
 
 	def forward(self, input_ids, labels=None, **kwargs):
-		x = input_ids
+		if self.random_input:
+			x = torch.randint(1, self.n_vocab, input_ids.shape)
+		else:
+			x = input_ids
 		x = x.to(device)
 		if self.double_tokens:
 			x_pairs = x.reshape(x.shape[0], x.shape[1]//2, 2)
@@ -319,8 +323,6 @@ class VariableMemoryMixer(nn.Module):
 			decoder_embeds = self.decoder_wte(input_ids)
 			embedding_array.append(encoder_embedding)
 			i += self.tokenized_length
-
-		
 
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)

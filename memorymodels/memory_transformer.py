@@ -197,6 +197,68 @@ class MemoryTransformer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
+class FrozenMemoryTransformer(nn.Module):
+	"""
+	Masked mixer memory model using a frozen pre-trained encoder. Implemented for token concatenation.
+	"""
+
+	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=4):
+		super().__init__()
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.decoder_proj = None
+
+		# ensures frozen params in encoder
+		for name, param in encoder_model.named_parameters():
+			param.requires_grad = False
+
+		self.encoder = encoder_model
+		llama_config_kwargs = {
+				'hidden_size': dim,
+				'intermediate_size': 4*dim,
+				'num_hidden_layers': depth,
+				'num_attention_heads': n_heads,
+				'vocab_size': n_vocab
+			}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.decoder = LlamaModel(decoder_configuration)
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
+		if encoder_dim != dim:
+			self.decoder_proj = nn.Linear(encoder_dim, dim)
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.compression = compression > 1
+		if self.compression:
+			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
+			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+		
+
+	def forward(self, input_ids, labels=None, **kwargs):
+		input_ids = input_ids.to(device)
+		x = self.encoder(input_ids)
+
+		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		if self.compression:
+			encoder_embedding = self.down(encoder_embedding)
+			encoder_embedding = self.up(encoder_embedding)
+
+		decoder_embeds = self.decoder_wte(input_ids)
+		if self.decoder_proj:
+			encoder_embedding = self.decoder_proj(encoder_embedding)
+		x = torch.cat((encoder_embedding, decoder_embeds), dim=1) # concatenation on token dim
+
+		x = self.decoder(x)
+		output = self.lm_head(x)
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		shift_labels, shift_logits = labels, output
+		shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
+		shift_labels = labels[..., 1:].contiguous() 
+		loss = self.cel(shift_logits, shift_labels)
+		return loss, output
 
 class ProjMemoryTransformer(nn.Module):
 

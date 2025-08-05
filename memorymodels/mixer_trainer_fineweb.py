@@ -28,27 +28,27 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
-encoder_dim = 1024
+tokenized_length = 1024
+encoder_dim = 256
 decoder_dim = 1024
-n_layers = 8
-compression = 8
+n_layers = 16
+compression = 4
 heads = 0
-kernel = 4
+kernel = 1
 
 # mixer model initialization
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
-
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
 # model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=0, kernel=1).float()
+
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -58,7 +58,7 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_automixer_k8_unroll\
+output_dir = f'{checkpoint_root}/fineweb_tmemory_mixer_k1\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -98,5 +98,5 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train('/home/azureuser/fineweb_automixer_k8_512c4_d512_n16_c512_b64x2/checkpoint-32000')
-trainer.train()
+trainer.train(output_dir + '/checkpoint-32000')
+#trainer.train()

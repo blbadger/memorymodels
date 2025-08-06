@@ -95,7 +95,7 @@ class VariableMemoryTransformer(nn.Module):
 
 class MemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1, random=False):
 		super().__init__()
 
 		self.use_transformer_encoder = False
@@ -153,10 +153,16 @@ class MemoryTransformer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+
+		self.n_vocab = n_vocab
+		self.random = random
 		
 
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
-		input_ids = input_ids.to(device)
+		if self.random:
+			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
+		else:
+			input_ids = input_ids.to(device)
 		if not self.use_transformer_encoder:
 			wte_embeds = self.wte(input_ids)
 			x = wte_embeds

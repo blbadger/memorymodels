@@ -86,7 +86,7 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
 
-	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1):
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoder = encoder_model
@@ -102,9 +102,14 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		if compression > 1:
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
+		self.random_input = random
+		self.n_vocab = n_vocab
 
 	def forward(self, input_ids, labels=None, attention_mask=None):
-		x = input_ids
+		if self.random_input:
+			x = torch.randint(1, self.n_vocab, input_ids.shape)
+		else:
+			x = input_ids
 		x = x.to(device).squeeze(1)
 		x = self.wte(x)
 		x = self.encoder(x)

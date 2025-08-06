@@ -401,7 +401,6 @@ class MemoryMixer(nn.Module):
 		self.random_input = random
 		self.n_vocab = n_vocab		
 
-
 	def forward(self, input_ids, labels=None, **kwargs):
 		if self.random_input:
 			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)

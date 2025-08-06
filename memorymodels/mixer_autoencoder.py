@@ -347,7 +347,7 @@ class VariableMemoryMixer(nn.Module):
 
 class MemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1, random=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -371,7 +371,7 @@ class MemoryMixer(nn.Module):
 						length = length+1,
 						causal=True,
 						n_heads = 0, # no heads for decoder
-						kernel = 1  # unitary kernel
+						kernel = kernel  # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -386,7 +386,7 @@ class MemoryMixer(nn.Module):
 						length = length,
 						causal=True,
 						n_heads = 0, # no heads for decoder
-						kernel = 1 # unitary kernel
+						kernel = kernel # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -398,9 +398,13 @@ class MemoryMixer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
-		
+		self.random_input = random
+		self.n_vocab = n_vocab		
+
 
 	def forward(self, input_ids, labels=None, **kwargs):
+		if self.random_input:
+			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
 		input_ids = input_ids.to(device)
 		wte_embeds = self.wte(input_ids)
 		x = wte_embeds

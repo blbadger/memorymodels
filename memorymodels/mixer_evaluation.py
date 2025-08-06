@@ -10,6 +10,8 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 import safetensors
+import pathlib
+import torch.distributed._shard.checkpoint as dist_cp
 
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
@@ -33,23 +35,36 @@ tokenized_length = 512
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 8
-compression = 8
+compression = 1
 heads = 0
 kernel = 4
 
 # mixer model initialization
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0, random_input=False).float()
-safetensors.torch.load_model(model, '/home/badger/fineweb_tmemory_transformer_e1024c1_d1024_n4_c512_b32/checkpoint-200000/model.safetensors')
-print (model)
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
+model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel, random=False).float()
+#safetensors.torch.load_model(model, '/home/bbadger/Desktop/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32/checkpoint-200000/model.safetensors')
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
+state_dict = {
+        "model": model.state_dict()
+    }
+
+checkpoint_path = pathlib.Path("/home/bbadger/Desktop/fineweb_tmemory_mixer_k4__1024c1_d1024_n8_c512_b32/checkpoint-200000")
+distcp_checkpoint_path = checkpoint_path / "pytorch_model_fsdp_0"
+dist_cp.load_state_dict(
+                state_dict=state_dict,
+                storage_reader = dist_cp.FileSystemReader(distcp_checkpoint_path),
+                no_dist=True,
+            )
+
+model.load_state_dict(state_dict["model"])
+
+test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
+#test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
-train_dataset = load_from_disk(train_path, keep_in_memory=None)
+train_dataset = load_from_disk(test_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
 # filter left-padded inputs from test dataset
@@ -75,7 +90,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	eval_strategy='steps',
-	output_dir='',
+	output_dir=data_root,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

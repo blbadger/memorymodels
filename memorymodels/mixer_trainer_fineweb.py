@@ -28,26 +28,26 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
-encoder_dim = 512
-decoder_dim = 512
-n_layers = 8
-compression = 1
+tokenized_length = 1024
+encoder_dim = 256
+decoder_dim = 1024
+n_layers = 16
+compression = 4
 heads = 0
 kernel = 8
 
 # mixer model initialization
 #model = LanguageMixer(n_vocab, dim, 1).float().to(device)
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float()
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float()
 # model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
+model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel).float()
 # model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -57,17 +57,17 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
+output_dir = f'{checkpoint_root}/fineweb_memory_mixer_ek8dk1\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b32'
+_c{tokenized_length}_b16x4'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -98,3 +98,4 @@ shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
 trainer.train()
+#trainer.train(output_dir + '/checkpoint-40000')

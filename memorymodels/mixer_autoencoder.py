@@ -285,8 +285,8 @@ class MemoryMixer(nn.Module):
 						dim = dim,
 						length = length+1,
 						causal=True,
-						n_heads = 0, # no heads for decoder
-						kernel = 1  # unitary kernel
+						n_heads = n_heads,
+						kernel = 1
 						)
 					for i in range(depth)]
 				).to(device)

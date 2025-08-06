@@ -17,6 +17,7 @@ import shutil
 from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
+from memory_transformer import MemoryTransformer
 
 warnings.filterwarnings(action='ignore')
 
@@ -26,11 +27,11 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 512
+encoder_dim = 256
 decoder_dim = 512
-context_length = 512
-compression = 1
-n_layers = 8
+context_length = 1024
+compression = 4
+n_layers = 16
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -57,18 +58,19 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
+encoder_model = LlamaModel(configuration)
+model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -85,12 +87,12 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoder_transmixer\
+output_dir = f'{checkpoint_root}/fineweb_memtrans_extended\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b32'
+_c{context_length}_b16x4'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
@@ -106,7 +108,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000
+	max_steps=500000
 )
 
 trainer = transformers.Trainer(
@@ -123,5 +125,7 @@ if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
 shutil.copy(code_path, output_dir)
 
+print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train() 
+trainer.train(output_dir + "/checkpoint-264000") 
+

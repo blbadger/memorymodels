@@ -10,9 +10,92 @@ from mixer_autoencoder import MixerBlock
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
+class VariableMemoryTransformer(nn.Module):
+
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4):
+		super().__init__()
+
+		llama_config_kwargs = {
+			'hidden_size': encoder_dim,
+			'intermediate_size': 4*encoder_dim,
+			'num_hidden_layers': depth,
+			'num_attention_heads': n_heads,
+			'vocab_size': n_vocab
+		}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.encoder = LlamaModel(decoder_configuration)
+		self.wte = nn.Embedding(n_vocab, dim)
+
+		self.decoder_proj = None
+
+		llama_config_kwargs = {
+			'hidden_size': dim,
+			'intermediate_size': 4*dim,
+			'num_hidden_layers': depth,
+			'num_attention_heads': n_heads,
+			'vocab_size': n_vocab
+		}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.decoder = LlamaModel(decoder_configuration)
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		if encoder_dim != dim:
+			self.decoder_proj = nn.Linear(encoder_dim, dim)
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.compression = compression > 1
+		self.chunks = n_chunks
+		if self.compression:
+			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
+			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+		
+
+	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
+		input_ids = input_ids.to(device)
+		# generate encoder embeddings
+		embedding_array = []
+		i = 0
+		while input_ids.shape[1] - self.tokenized_length > i:
+			input_chunk, attention_chunk = input_ids[:, i: i+self.tokenized_length], attention_mask[:, i: i+self.tokenized_length]
+			x = self.encoder(input_chunk, attention_mask=attention_chunk).last_hidden_state
+			
+			encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+			if self.compression:
+				encoder_embedding = self.down(encoder_embedding)
+				encoder_embedding = self.up(encoder_embedding)
+			if self.decoder_proj:
+				encoder_embedding = self.decoder_proj(encoder_embedding)
+			embedding_array.append(encoder_embedding)
+			i += self.tokenized_length
+
+		# embedding_array now stores length // n_ctx - 1 embeddings
+		input_embeddings = self.decoder_wte(input_ids)
+		total_loss = 0
+		for c in range(self.chunks): # self.chunks
+			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
+			x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
+			if attention_mask is not None:
+				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
+			
+			# feed pre-concatenated input embeddings to the transformer decoder
+			x = self.decoder(inputs_embeds=x)
+			output = self.lm_head(x.last_hidden_state)
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_labels, shift_logits = labels, output
+			shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
+			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			loss = self.cel(shift_logits, shift_labels)
+			total_loss += loss
+		return total_loss, output
+
+
 class MemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1, random=False):
 		super().__init__()
 
 		self.use_transformer_encoder = False
@@ -70,10 +153,16 @@ class MemoryTransformer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+
+		self.n_vocab = n_vocab
+		self.random = random
 		
 
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
-		input_ids = input_ids.to(device)
+		if self.random:
+			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
+		else:
+			input_ids = input_ids.to(device)
 		if not self.use_transformer_encoder:
 			wte_embeds = self.wte(input_ids)
 			x = wte_embeds
@@ -114,6 +203,68 @@ class MemoryTransformer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
+class FrozenMemoryTransformer(nn.Module):
+	"""
+	Masked mixer memory model using a frozen pre-trained encoder. Implemented for token concatenation.
+	"""
+
+	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=4):
+		super().__init__()
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.decoder_proj = None
+
+		# ensures frozen params in encoder
+		for name, param in encoder_model.named_parameters():
+			param.requires_grad = False
+
+		self.encoder = encoder_model
+		llama_config_kwargs = {
+				'hidden_size': dim,
+				'intermediate_size': 4*dim,
+				'num_hidden_layers': depth,
+				'num_attention_heads': n_heads,
+				'vocab_size': n_vocab
+			}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.decoder = LlamaModel(decoder_configuration)
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
+		if encoder_dim != dim:
+			self.decoder_proj = nn.Linear(encoder_dim, dim)
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.compression = compression > 1
+		if self.compression:
+			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
+			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+		
+
+	def forward(self, input_ids, labels=None, **kwargs):
+		input_ids = input_ids.to(device)
+		x = self.encoder(input_ids)
+
+		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		if self.compression:
+			encoder_embedding = self.down(encoder_embedding)
+			encoder_embedding = self.up(encoder_embedding)
+
+		decoder_embeds = self.decoder_wte(input_ids)
+		if self.decoder_proj:
+			encoder_embedding = self.decoder_proj(encoder_embedding)
+		x = torch.cat((encoder_embedding, decoder_embeds), dim=1) # concatenation on token dim
+
+		x = self.decoder(x)
+		output = self.lm_head(x)
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		shift_labels, shift_logits = labels, output
+		shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
+		shift_labels = labels[..., 1:].contiguous() 
+		loss = self.cel(shift_logits, shift_labels)
+		return loss, output
 
 class ProjMemoryTransformer(nn.Module):
 

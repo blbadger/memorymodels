@@ -37,23 +37,22 @@ heads = 0
 kernel = 4
 
 # mixer model initialization
-#model = LanguageMixer(n_vocab, dim, 1).float().to(device)
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
-# model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
-#model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
-#model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0, random_input=False).float()
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
+
+# filter left-padded inputs from test dataset
+test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 mlflow.end_run()
 
 # descriptive name for output
@@ -62,12 +61,7 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b16x4'
-
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+_c{tokenized_length}_b64x2'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
@@ -80,7 +74,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	eval_strategy='steps',
-	output_dir=output_dir,
+	output_dir='',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -95,13 +89,4 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
-# save driver snapshot
-code_path = os.path.abspath(__file__)
-if not os.path.isdir(output_dir):
-	os.mkdir(output_dir)
-shutil.copy(code_path, output_dir)
-
-print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train('/home/azureuser/fineweb_automixer_k8_512c4_d512_n16_c512_b64x2/checkpoint-32000')
-trainer.train()
-#trainer.train(output_dir + '/checkpoint-40000')
+print (trainer.evaluate())

@@ -130,6 +130,7 @@ class AutoencodingMixer(nn.Module):
 			self.up = nn.Linear(dim//compression, dim)
 		self.unroll = unroll
 		self.dim = dim
+		#if unroll == True:
 		self.projection = nn.Linear(dim//2, dim)
 		self.random_input = random
 

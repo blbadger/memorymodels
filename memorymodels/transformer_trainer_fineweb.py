@@ -89,7 +89,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_nomemorytrans_256c1024\
+output_dir = f'{checkpoint_root}/fineweb_memorytrans_256c1024\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

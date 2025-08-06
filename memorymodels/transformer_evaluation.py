@@ -50,6 +50,7 @@ encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_leng
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, random=False)
 
+# encoder_model = LlamaModel(configuration)
 # model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=False)
 
 # model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)

@@ -161,8 +161,7 @@ class MemoryTransformer(nn.Module):
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
 		if self.random:
 			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
-		else:
-			input_ids = input_ids.to(device)
+		input_ids = input_ids.to(device)
 		if not self.use_transformer_encoder:
 			wte_embeds = self.wte(input_ids)
 			x = wte_embeds

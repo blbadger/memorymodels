@@ -9,6 +9,7 @@ import torch.nn as nn
 import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
+import safetensors
 
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
@@ -39,7 +40,7 @@ kernel = 4
 # mixer model initialization
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0, random_input=False).float()
-
+safetensors.torch.load_model(model, '/home/badger/fineweb_tmemory_transformer_e1024c1_d1024_n4_c512_b32/checkpoint-200000/model.safetensors')
 print (model)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"

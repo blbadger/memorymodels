@@ -10,6 +10,7 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
+import safetensors
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
@@ -54,6 +55,7 @@ model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, 
 # model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=False)
 
 # model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
+safetensors.torch.load_model(model, '/home/badger/fineweb_tmemory_transformer_e1024c1_d1024_n4_c512_b32/checkpoint-200000/model.safetensors')
 
 print (model)
 

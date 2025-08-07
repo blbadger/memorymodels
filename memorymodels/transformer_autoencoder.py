@@ -98,8 +98,9 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		unroll_factor = dim // tokenized_length #assumes
 		self.projection = nn.Linear(dim//2, dim)
 		self.dim = dim
-		self.compression = compression
+		self.compression = False
 		if compression > 1:
+			self.compression = True
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
 		self.random_input = random

@@ -101,7 +101,7 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
-print (trainer.evaluate())
+#print (trainer.evaluate())
 # save driver snapshot
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):

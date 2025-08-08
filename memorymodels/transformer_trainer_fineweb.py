@@ -89,7 +89,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memorytrans_256c1024\
+output_dir = f'{checkpoint_root}/fineweb_nomemorytrans_256c1024\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -103,7 +103,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',

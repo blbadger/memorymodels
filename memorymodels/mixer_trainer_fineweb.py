@@ -108,5 +108,5 @@ if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
 shutil.copy(code_path, output_dir)
 print (f'training begun: saving checkpoints in {output_dir}')
-#trainer.train('/home/azureuser/Desktop/fineweb_autoencoding_mixer_k8_1024c1_d1024_n8_c512_b32/checkpoint-200000')
-trainer.train()
+trainer.train('/home/azureuser/fineweb_c256x4_memory_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-120000')
+#trainer.train()

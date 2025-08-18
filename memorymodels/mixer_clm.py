@@ -200,7 +200,6 @@ class LanguageMixer(nn.Module):
 	def __init__(self, n_vocab, dim, depth, length, tie_weights=False, n_heads=0, kernel=1):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
-		if n_heads > 0:
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,

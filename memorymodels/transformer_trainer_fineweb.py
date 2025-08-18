@@ -29,25 +29,25 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 encoder_dim = 256
 decoder_dim = 512
-context_length = 256
+context_length = 1024
 compression = 1
 n_layers = 16
 n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size': encoder_dim,
-    'intermediate_size': 4*encoder_dim,
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': 4,
     'vocab_size': vocab_size
 }
 
 # Initializing a LLaMA model
-# configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-# model = LlamaForCausalLM(configuration).float()
+model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -64,7 +64,7 @@ llama_config_kwargs = {
 
 # model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
 
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
+#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -89,7 +89,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_nomemorytrans_256c1024\
+output_dir = f'{checkpoint_root}/fineweb_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -103,7 +103,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',

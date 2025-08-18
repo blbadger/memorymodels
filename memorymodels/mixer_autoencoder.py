@@ -353,6 +353,68 @@ class VariableMemoryMixer(nn.Module):
 		mean_loss = total_loss / self.n_chunks
 		return mean_loss, output
 
+
+class RecurrentMemoryMixer(nn.Module):
+
+	def __init__(self, n_vocab, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False):
+		super().__init__()
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.decoderblocks = nn.ModuleList(
+				[MixerBlock(
+					dim = dim,
+					length = length+2,
+					causal=True,
+					n_heads = n_heads,
+					kernel = kernel
+					)
+				for i in range(depth)]
+			).to(device)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.n_chunks = n_chunks
+		self.no_memory = no_memory
+		self.decoder_dim = dim
+
+	def forward(self, input_ids, labels=None, **kwargs):
+		input_ids = input_ids.to(device)
+		embedding_array = []
+		i = 0
+		if self.no_memory:
+			i = 1e9
+			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
+
+		# embedding_array now stores length // n_ctx - 1 embeddings
+		input_embeddings = self.decoder_wte(input_ids)
+		total_loss = 0
+		for c in range(self.n_chunks):
+			x = input_ids[:, c*self.tokenized_length: (c+1)*self.tokenized_length]
+			decoder_embeds = self.wte(x)
+			if c == 0:
+				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
+			decoder_embeds[:, -1, :] = encoder_embedding
+			x = torch.cat((encoder_embedding, decoder_embeds), dim=1)
+			decoder_embeds = self.decoder_wte(input_ids)
+
+			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
+			for block in self.decoderblocks:
+				x = block(x)
+
+			encoder_embedding = x[:, -1, :]
+			output = self.lm_head(x)
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_labels, shift_logits = labels, output
+			shift_logits = output[..., 1:-1].contiguous() # first c 'tokens' are encoding
+			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			loss = self.cel(shift_logits, shift_labels)
+			total_loss += loss
+		mean_loss = total_loss / self.n_chunks
+		return mean_loss, output
+
+
 class MemoryMixer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1, random=False):

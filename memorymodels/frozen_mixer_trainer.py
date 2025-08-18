@@ -12,8 +12,10 @@ from safetensors import safe_open
 from datasets import load_dataset, load_from_disk
 from pathlib import Path
 
+from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel
 import warnings
+from dotenv import load_dotenv
 
 load_dotenv()
 data_root = os.getenv('DATA_ROOT')
@@ -34,11 +36,14 @@ decoder_dim = 1024
 n_layers = 8
 compression = 1
 n_heads = 0
-kernel = 1
+kernel = 16
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
-autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+#pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
+#autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+
+pretrained_autoencoder = MultiHeadedMixer(n_vocab, decoder_dim, 16, length=tokenized_length, heads=4).float().to(device)
+autoencoder_path = Path(f"{checkpoint_root}/Desktop/fineweb_mixer_4h_d1024_n16_c512_b64x2/checkpoint-200000")
 load_path = autoencoder_path / "model.safetensors"
 print (pretrained_autoencoder)
 
@@ -47,12 +52,12 @@ print (pretrained_autoencoder.wte.weight)
 safetensors.torch.load_model(pretrained_autoencoder, load_path)
 print (pretrained_autoencoder.wte.weight)
 
-encoder = TruncatedModel(pretrained_autoencoder)
+encoder = TruncatedModel(pretrained_autoencoder, autoencoder=False)
 model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0).float()
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -61,14 +66,14 @@ train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 64
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_mixer\
+output_dir = f'{checkpoint_root}/fineweb_frozen_clm_h4mixer\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{tokenized_length}\
-_b{batch_size}'
+_b{batch_size}x2'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,

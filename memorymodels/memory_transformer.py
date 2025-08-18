@@ -100,6 +100,7 @@ class VariableMemoryTransformer(nn.Module):
 		self.tokenized_length = length
 		self.compression = compression > 1
 		self.chunks = n_chunks
+		self.fixed_memory = fixed_memory
 		if self.compression:
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
@@ -128,7 +129,11 @@ class VariableMemoryTransformer(nn.Module):
 		total_loss = 0
 		for c in range(self.chunks): # self.chunks
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
-			x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
+			if self.fixed_memory:
+				pad = torch.zeros((input_ids.shape[0], self.chunks-c, input_embeddings.shape[2])).to(device)
+				x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1) # concatenation on token dim
+			else:
+				x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
 			if attention_mask is not None:
 				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
 			
@@ -139,11 +144,15 @@ class VariableMemoryTransformer(nn.Module):
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
 			shift_labels, shift_logits = labels, output
-			shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
+			if self.fixed_memory:
+				shift_logits = output[..., self.chunks:self.chunks+self.tokenized_length-1].contiguous()
+			else:
+				shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
 			total_loss += loss
-		return total_loss, output
+		mean_loss = total_loss / self.chunks
+		return mean_loss, output
 
 
 class MemoryTransformer(nn.Module):

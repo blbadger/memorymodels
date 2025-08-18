@@ -7,6 +7,7 @@ import mlflow
 from prettytable import PrettyTable
 from datasets import load_dataset
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -95,7 +96,7 @@ class MixerBlock(nn.Module):
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.mixerhead = MixerHead(dim, length, dim, heads)
+		self.mixerhead = OldMixerHead(dim, length, dim, heads) ### MixerHead()
 		self.patch_ff = FeedForward(dim)
 
 	def forward(self, x: torch.tensor):

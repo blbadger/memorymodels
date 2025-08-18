@@ -585,11 +585,15 @@ class FrozenMemoryMixer(nn.Module):
 
 
 class TruncatedModel(nn.Module):
-	def __init__(self, model):
+	def __init__(self, model, autoencoder=True):
 		super().__init__()
 		self.model_wte = model.wte
-		self.model_blocks = model.encoderblocks
-	
+		if autoencoder:
+			self.model_blocks = model.encoderblocks
+		else:
+			self.model_blocks = model.mixerblocks	
+
+
 	def forward(self, x):
 		x = self.model_wte(x.to(device))
 		for block in self.model_blocks:

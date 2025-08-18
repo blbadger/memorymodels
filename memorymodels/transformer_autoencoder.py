@@ -100,7 +100,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 		self.dim = dim
 		self.compression = False
 		if compression > 1:
-			self.compression=True
+			self.compression = True
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
 		self.random_input = random

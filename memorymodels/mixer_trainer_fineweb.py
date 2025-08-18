@@ -11,6 +11,7 @@ import datasets
 from datasets import load_dataset, load_from_disk
 import safetensors
 
+from mixer_clm import LanguageMixer
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, VariableMemoryMixer, ProjMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
@@ -29,7 +30,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 256
+tokenized_length = 1024
 encoder_dim = 512
 decoder_dim = 1024
 n_layers = 16
@@ -38,12 +39,12 @@ heads = 0
 kernel = 8
 
 # mixer model initialization
-#model = LanguageMixer(n_vocab, dim, 1).float().to(device)
+model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 #safetensors.torch.load_model(model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 # model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=0, kernel=1).float()
-model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, n_chunks=4)
+#model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=True)
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
@@ -69,7 +70,7 @@ mlflow.end_run()
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_c256x4_memory_mixer_k8\
+output_dir = f'{checkpoint_root}/fineweb_mixerk8\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -108,5 +109,5 @@ if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
 shutil.copy(code_path, output_dir)
 print (f'training begun: saving checkpoints in {output_dir}')
-trainer.train('/home/azureuser/fineweb_c256x4_memory_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-120000')
-#trainer.train()
+#trainer.train('/home/azureuser/fineweb_c256x4_memory_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-120000')
+trainer.train()

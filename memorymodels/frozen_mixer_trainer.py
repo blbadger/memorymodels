@@ -11,6 +11,7 @@ import safetensors
 from safetensors import safe_open
 from datasets import load_dataset, load_from_disk
 from pathlib import Path
+from dotenv import load_dotenv
 
 from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel
 import warnings
@@ -31,14 +32,15 @@ print ('Vocab size: ', n_vocab)
 tokenized_length = 512
 encoder_dim = 1024
 decoder_dim = 1024
-n_layers = 8
+n_layers = 16
 compression = 1
 n_heads = 0
 kernel = 1
+unroll = True
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
-autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=unroll)
+autoencoder_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000")
 load_path = autoencoder_path / "model.safetensors"
 print (pretrained_autoencoder)
 
@@ -48,11 +50,11 @@ safetensors.torch.load_model(pretrained_autoencoder, load_path)
 print (pretrained_autoencoder.wte.weight)
 
 encoder = TruncatedModel(pretrained_autoencoder)
-model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0).float()
+model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0, kernel=kernel).float()
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -63,12 +65,12 @@ mlflow.end_run()
 
 batch_size = 32
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_mixer\
+output_dir = f'{checkpoint_root}/fineweb_frozen_mixer_ek16\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{tokenized_length}\
-_b{batch_size}'
+_b{batch_size}x4'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,

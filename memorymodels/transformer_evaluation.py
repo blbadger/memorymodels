@@ -10,6 +10,7 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
+import safetensors
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
@@ -24,19 +25,19 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
+encoder_dim = 512
 decoder_dim = 512
-context_length = 256
+context_length = 512
 compression = 1
-n_layers = 16
-n_heads = 4
+n_layers = 8
+n_heads = 8
 
 vocab_size = 8000
 llama_config_kwargs = {
     'hidden_size': encoder_dim,
     'intermediate_size': 4*encoder_dim,
     'num_hidden_layers': n_layers,
-    'num_attention_heads': 4,
+    'num_attention_heads': n_heads,
     'vocab_size': vocab_size
 }
 
@@ -44,24 +45,26 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-# model = LlamaForCausalLM(configuration).float()
+#encoder_model = LlamaForCausalLM(configuration).float()
 
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, random=False)
 
-# model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=False)
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=False)
 
 # model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
 
 print (model)
+safetensors.torch.load_model(model, '/home/badger/fineweb_autotrans_unroll_h8_e512c1_d512_n8_c512_b32/checkpoint-200000/model.safetensors')
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
-# test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
+#test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
@@ -83,7 +86,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	eval_strategy='steps',
-	output_dir='',
+	output_dir=data_root,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

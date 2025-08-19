@@ -11,7 +11,8 @@ import datasets
 from datasets import load_dataset, load_from_disk
 
 from mixer_multiconv import MultiHeadedMixer
-from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
+from mixer_clm import LanguageMixer
+from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer, FrozenMemoryMixer, VariableMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
 from dotenv import load_dotenv
@@ -28,26 +29,28 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
+tokenized_length = 1024
 encoder_dim = 1024
 decoder_dim = 1024
-n_layers = 8
-compression = 8
+n_layers = 16
+compression = 1
 heads = 0
-kernel = 4
+kernel = 1
 
 # mixer model initialization
-#model = LanguageMixer(n_vocab, dim, 1).float().to(device)
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
+model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=True).float()
 # model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0).float()
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads).float()
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
 print (model)
+#encoder = model.encoder
+#model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -57,28 +60,25 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_automixer_k8_unroll\
+output_dir = f'{checkpoint_root}/fineweb_mixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b16x4'
+_c{tokenized_length}_b32x4'
+
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
-
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
-	fp16=True,
+	fp16=False,
+        bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',

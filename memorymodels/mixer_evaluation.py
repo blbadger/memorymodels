@@ -9,6 +9,7 @@ import torch.nn as nn
 import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
+import safetensors
 
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
@@ -32,18 +33,18 @@ tokenized_length = 512
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 8
-compression = 8
+compression = 1
 heads = 0
-kernel = 4
+kernel = 16
 
 # mixer model initialization
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=True).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0, random_input=False).float()
-
+safetensors.torch.load_model(model, '/home/badger/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors')
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
+train_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
+test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -74,7 +75,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	eval_strategy='steps',
-	output_dir='',
+	output_dir=data_root,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

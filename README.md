@@ -32,6 +32,12 @@ $ accelerate launch --config_file "configs/zero_config.yaml" {training_script.py
 
 Note that these configs do not auto-detect compute capabilities and GPU numbers, so switching between 2 and 4 and 8 GPUs may require changing the `num_processes` variable in the corresponding YAML. Currently all drivers and configs are set to use fp16/fp32 mixed precision training for reproducability with V100s, but for experiments run only on A100s/H100s bf16 can be used instead.
 
+With any of the above methods for distributed launch, you may experience an error if another job is already running due to a port being in use. If this is the cae, simply change the `master_port` to a new value (`torch` defaults to 35600), for example see the following:
+
+```bash
+$ CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port 35500 {training_script.py}
+```
+
 ### Precomputation
 
 The drivers are designed to collate and batch pretokenized (and pre-padded) inputs as an alterative to loading cached datasets, tokenizing, batching and collating. This design choice trades disk space for training speed: older CPUs (the V100s cluster has Intel E5 v4s) typically do throttle training slightly when using large batches if tokenization is performed during training, even though tokenization occurs during forward passes to attempt to avoid blocking by default. 

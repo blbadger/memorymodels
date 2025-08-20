@@ -86,23 +86,29 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
 
-	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False):
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoder = encoder_model
+		if freeze_encoder:
+			for _, param in self.encoder.named_parameters():
+				param.requires_grad = False
+
 		self.decoder = decoder_model
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = tokenized_length
 		assert dim >= tokenized_length
-		unroll_factor = dim // tokenized_length #assumes
+		unroll_factor = dim // tokenized_length # assumes dim >= tokenized_length
 		self.projection = nn.Linear(dim//2, dim)
 		self.dim = dim
+
 		self.compression = False
 		if compression > 1:
 			self.compression = True
 			self.down = nn.Linear(dim, dim//compression)
 			self.up = nn.Linear(dim//compression, dim)
+			
 		self.random_input = random
 		self.n_vocab = n_vocab
 

@@ -11,6 +11,7 @@ from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
+import safetensors
 import datasets
 import warnings
 import shutil
@@ -28,10 +29,10 @@ data_root = os.getenv('DATA_ROOT')
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 encoder_dim = 256
-decoder_dim = 512
-context_length = 1024
+decoder_dim = 256
+context_length = 512
 compression = 1
-n_layers = 16
+n_layers = 8
 n_heads = 4
 
 vocab_size = 8000
@@ -47,7 +48,7 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+# model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -59,10 +60,12 @@ model = LlamaForCausalLM(configuration).float()
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-# encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-# decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
-# model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
+										compression=compression, freeze_encoder=True)
 
 #model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
 
@@ -71,8 +74,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -89,7 +92,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_transformer\
+output_dir = f'{checkpoint_root}/fineweb_frozenencoder_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

@@ -91,7 +91,8 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False,
+			  frozen_encoder=None):
 		super().__init__()
 		self.double_tokens = double_tokens
 		self.n_vocab = n_vocab
@@ -99,8 +100,13 @@ class AutoencodingMixer(nn.Module):
 			self.wte = nn.Linear(n_vocab, dim)
 		else:
 			self.wte = nn.Embedding(n_vocab, dim)
-			
-		self.encoderblocks = nn.ModuleList(
+		if frozen_encoder:
+			# enforce no grad on encoder
+			for _, param in frozen_encoder.named_parameters():
+				param.requires_grad = False
+			self.encoderblocks = frozen_encoder.to(device)
+		else:
+			self.encoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
 				length = length,

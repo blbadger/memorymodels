@@ -272,11 +272,18 @@ class AutoencodingTransfixer(nn.Module):
 
 class VariableMemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False,
+			  frozen_encoder=None):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
-		self.encoderblocks = nn.ModuleList(
+		if frozen_encoder:
+			# freeze encoder params
+			for _, param in self.frozen_encoder.named_parameters():
+				param.requires_grad = False
+			self.encoderblocks = frozen_encoder
+		else:
+			self.encoderblocks = nn.ModuleList(
 				[MixerBlock(
 					dim = encoder_dim,
 					length = length,

@@ -13,20 +13,25 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class VariableMemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, frozen_encoder=None):
 		super().__init__()
 
-		llama_config_kwargs = {
-			'hidden_size': encoder_dim,
-			'intermediate_size': 4*encoder_dim,
-			'num_hidden_layers': depth,
-			'num_attention_heads': n_heads,
-			'vocab_size': n_vocab
-		}
-		decoder_configuration = LlamaConfig(**llama_config_kwargs)
-		self.encoder = LlamaModel(decoder_configuration)
-		self.wte = nn.Embedding(n_vocab, dim)
+		if frozen_encoder:
+			for _, param in self.frozen_encoder.named_parameters():
+				param.requires_grad = False
+			self.encoder = frozen_encoder
+		else:
+			llama_config_kwargs = {
+				'hidden_size': encoder_dim,
+				'intermediate_size': 4*encoder_dim,
+				'num_hidden_layers': depth,
+				'num_attention_heads': n_heads,
+				'vocab_size': n_vocab
+			}
+			encoder_configuration = LlamaConfig(**llama_config_kwargs)
+			self.encoder = LlamaModel(encoder_configuration)
 
+		self.wte = nn.Embedding(n_vocab, dim)
 		self.decoder_proj = None
 
 		llama_config_kwargs = {

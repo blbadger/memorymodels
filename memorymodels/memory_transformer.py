@@ -10,9 +10,9 @@ from mixer_autoencoder import MixerBlock
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-class RecursiveMemoryTransformer(nn.Module):
+class RecurrentMemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4):
+	def __init__(self, n_vocab, dim, depth, length, n_heads=4, n_chunks=4):
 		super().__init__()
 
 		llama_config_kwargs = {
@@ -29,7 +29,6 @@ class RecursiveMemoryTransformer(nn.Module):
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = length
 		self.chunks = n_chunks
-	
 
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
 		input_ids = input_ids.to(device)

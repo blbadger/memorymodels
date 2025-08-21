@@ -10,6 +10,55 @@ from mixer_autoencoder import MixerBlock
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+class RecursiveMemoryTransformer(nn.Module):
+
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4):
+		super().__init__()
+
+		llama_config_kwargs = {
+			'hidden_size': dim,
+			'intermediate_size': 4*dim,
+			'num_hidden_layers': depth,
+			'num_attention_heads': n_heads,
+			'vocab_size': n_vocab
+		}
+		decoder_configuration = LlamaConfig(**llama_config_kwargs)
+		self.decoder = LlamaModel(decoder_configuration)
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.chunks = n_chunks
+	
+
+	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
+		input_ids = input_ids.to(device)
+		total_loss = 0
+
+		for c in range(self.n_chunks):
+			x = input_ids[:, c*self.tokenized_length: (c+1)*self.tokenized_length]
+			decoder_embeds = self.decoder_wte(x)
+			if c == 0:
+				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
+			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)
+			x = torch.cat((encoder_embedding, decoder_embeds), dim=1)
+
+			for block in self.decoderblocks:
+				x = block(x)
+
+			encoder_embedding = x[:, -1, :].unsqueeze(1)
+			output = self.lm_head(x)
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_labels, shift_logits = labels, output
+			shift_logits = output[..., 1:-1].contiguous() # first c 'tokens' are encoding
+			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			loss = self.cel(shift_logits, shift_labels)
+			total_loss += loss
+		mean_loss = total_loss / self.n_chunks
+		return mean_loss, output
+
 
 class VariableMemoryTransformer(nn.Module):
 

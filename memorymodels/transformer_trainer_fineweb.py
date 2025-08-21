@@ -28,10 +28,10 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
-decoder_dim = 512
-context_length = 256
-compression = 1
+ncoder_dim = 128
+decoder_dim = 256
+context_length = 1024
+compression = 2
 n_layers = 8
 n_heads = 4
 
@@ -45,10 +45,10 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-#configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-#model = LlamaForCausalLM(configuration).float()
+model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -67,7 +67,9 @@ safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencodin
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
 										compression=compression, freeze_encoder=True)
 
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=False)
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
+#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=False)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -92,12 +94,12 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozenencoder_transformer\
+output_dir = f'{checkpoint_root}/fineweb_clm_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b64x2'
+_c{context_length}_b64'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(

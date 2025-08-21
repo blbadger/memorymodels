@@ -30,13 +30,13 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 1024
-encoder_dim = 512
-decoder_dim = 1024
-n_layers = 16
+tokenized_length = 128
+encoder_dim = 256
+decoder_dim = 512
+n_layers = 8
 compression = 1
 heads = 0
-kernel = 8
+kernel = 1
 
 # mixer model initialization
 encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
@@ -55,8 +55,8 @@ print (model)
 #test_path = '/home/azureuser/fineweb-edu-tokenized-test-c512-lpad-8k-debatched'
 #train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
 #test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 #train_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
 #test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
@@ -72,12 +72,12 @@ mlflow.end_run()
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_mixerk8\
+output_dir = f'{checkpoint_root}/fineweb_rpad_mixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b64x2'
+_c{tokenized_length}_b64'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,

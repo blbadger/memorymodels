@@ -398,7 +398,7 @@ class RecurrentMemoryMixer(nn.Module):
 		total_loss = 0
 		for c in range(self.n_chunks):
 			x = input_ids[:, c*self.tokenized_length: (c+1)*self.tokenized_length]
-			decoder_embeds = self.wte(x)
+			decoder_embeds = self.decoder_wte(x)
 			if c == 0:
 				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
 			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)

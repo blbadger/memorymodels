@@ -130,6 +130,7 @@ class AutoencodingMixer(nn.Module):
 			self.up = nn.Linear(dim//compression, dim)
 		self.unroll = unroll
 		self.dim = dim
+		#if unroll == True:
 		self.projection = nn.Linear(dim//2, dim)
 		self.random_input = random
 
@@ -265,7 +266,7 @@ class AutoencodingTransfixer(nn.Module):
 
 class VariableMemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -284,7 +285,7 @@ class VariableMemoryMixer(nn.Module):
 		self.decoderblocks = nn.ModuleList(
 				[MixerBlock(
 					dim = dim,
-					length = length+1,
+					length = length+n_chunks,
 					causal=True,
 					n_heads = 0, # no heads for decoder
 					kernel = 1  # unitary kernel
@@ -302,6 +303,8 @@ class VariableMemoryMixer(nn.Module):
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
 		self.n_chunks = n_chunks
+		self.no_memory = no_memory
+		self.decoder_dim = dim
 		
 
 	def forward(self, input_ids, labels=None, **kwargs):
@@ -309,8 +312,12 @@ class VariableMemoryMixer(nn.Module):
 		wte_embeds = self.wte(input_ids)
 		embedding_array = []
 		i = 0
+		if self.no_memory:
+			i = 1e9
+			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
 		while input_ids.shape[1] - self.tokenized_length > i:
-			input_chunk = input_ids[:, i: i+self.tokenized_length]
+			x = input_ids[:, i: i+self.tokenized_length]
+			x = self.wte(x)
 			for block in self.encoderblocks:
 				x = block(x)
 
@@ -327,9 +334,10 @@ class VariableMemoryMixer(nn.Module):
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)
 		total_loss = 0
-		for c in range(self.chunks):
+		for c in range(self.n_chunks):
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
-			x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
+			pad = torch.zeros((input_ids.shape[0], self.n_chunks-c, input_embeddings.shape[2])).to(device)
+			x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1) # concatenation on token dim
 			for block in self.decoderblocks:
 				x = block(x)
 			
@@ -338,16 +346,75 @@ class VariableMemoryMixer(nn.Module):
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
 			shift_labels, shift_logits = labels, output
-			shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
+			shift_logits = output[..., self.n_chunks:self.n_chunks+self.tokenized_length-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
 			total_loss += loss
-		mean_loss = total_loss / self.chunks
+		mean_loss = total_loss / self.n_chunks
 		return mean_loss, output
+
+
+class RecurrentMemoryMixer(nn.Module):
+
+	def __init__(self, n_vocab, dim, depth, length, n_heads=0, kernel=1, n_chunks=4, no_memory=False):
+		super().__init__()
+		self.decoder_wte = nn.Embedding(n_vocab, dim)
+		self.decoderblocks = nn.ModuleList(
+				[MixerBlock(
+					dim = dim,
+					length = length+1,
+					causal=True,
+					n_heads = n_heads,
+					kernel = kernel
+					)
+				for i in range(depth)]
+			).to(device)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.n_chunks = n_chunks
+		self.no_memory = no_memory
+		self.decoder_dim = dim
+
+	def forward(self, input_ids, labels=None, **kwargs):
+		input_ids = input_ids.to(device)
+		embedding_array = []
+		i = 0
+		if self.no_memory:
+			i = 1e9
+			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
+
+		# embedding_array now stores length // n_ctx - 1 embeddings
+		#input_embeddings = self.decoder_wte(input_ids)
+		total_loss = 0
+		for c in range(self.n_chunks):
+			x = input_ids[:, c*self.tokenized_length: (c+1)*self.tokenized_length]
+			decoder_embeds = self.decoder_wte(x)
+			if c == 0:
+				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
+			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)
+			x = torch.cat((encoder_embedding, decoder_embeds), dim=1)
+			for block in self.decoderblocks:
+				x = block(x)
+
+			encoder_embedding = x[:, -1, :].unsqueeze(1)
+			output = self.lm_head(x)
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_labels, shift_logits = labels, output
+			shift_logits = output[..., 1:-1].contiguous() # first c 'tokens' are encoding
+			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			loss = self.cel(shift_logits, shift_labels)
+			total_loss += loss
+		mean_loss = total_loss / self.n_chunks
+		return mean_loss, output
+
 
 class MemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', n_heads=0, kernel=1, random=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -370,8 +437,8 @@ class MemoryMixer(nn.Module):
 						dim = dim,
 						length = length+1,
 						causal=True,
-						n_heads = n_heads,
-						kernel = 1
+						n_heads = 0, # no heads for decoder
+						kernel = kernel  # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -386,7 +453,7 @@ class MemoryMixer(nn.Module):
 						length = length,
 						causal=True,
 						n_heads = 0, # no heads for decoder
-						kernel = 1 # unitary kernel
+						kernel = kernel # unitary kernel
 						)
 					for i in range(depth)]
 				).to(device)
@@ -398,9 +465,12 @@ class MemoryMixer(nn.Module):
 		if self.compression:
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
-		
+		self.random_input = random
+		self.n_vocab = n_vocab		
 
 	def forward(self, input_ids, labels=None, **kwargs):
+		if self.random_input:
+			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
 		input_ids = input_ids.to(device)
 		wte_embeds = self.wte(input_ids)
 		x = wte_embeds

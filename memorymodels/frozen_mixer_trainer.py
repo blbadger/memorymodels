@@ -35,7 +35,7 @@ decoder_dim = 1024
 n_layers = 16
 compression = 1
 n_heads = 0
-kernel = 1
+kernel = 16
 unroll = True
 
 # mixer model initialization
@@ -65,7 +65,7 @@ mlflow.end_run()
 
 batch_size = 32
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_mixer_ek16\
+output_dir = f'{checkpoint_root}/fineweb_frozen_mixer_ek16_extended\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -106,3 +106,4 @@ shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
 trainer.train()
+#trainer.train('/home/badger/fineweb_frozen_mixer_ek16_extended_1024c1_d1024_n16_c512_b32x4/checkpoint-72000')

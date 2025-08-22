@@ -17,11 +17,7 @@ import shutil
 from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
-<<<<<<< HEAD
-from memory_transformer import MemoryTransformer
-=======
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
->>>>>>> 66b474052ca7ac9cc79cd92aa34c5bca04b8a2ce
 
 warnings.filterwarnings(action='ignore')
 
@@ -33,31 +29,25 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 encoder_dim = 256
 decoder_dim = 512
-<<<<<<< HEAD
-context_length = 1024
-compression = 4
-n_layers = 16
-=======
 context_length = 256
 compression = 1
 n_layers = 16
 n_heads = 4
->>>>>>> 66b474052ca7ac9cc79cd92aa34c5bca04b8a2ce
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size': encoder_dim,
-    'intermediate_size': 4*encoder_dim,
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': 4,
     'vocab_size': vocab_size
 }
 
 # Initializing a LLaMA model
-# configuration = LlamaConfig(**llama_config_kwargs)
+#configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-# model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -69,21 +59,17 @@ llama_config_kwargs = {
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-<<<<<<< HEAD
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-encoder_model = LlamaModel(configuration)
-model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
-=======
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
 # model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression)
 
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
->>>>>>> 66b474052ca7ac9cc79cd92aa34c5bca04b8a2ce
-
+model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed=True)
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -107,28 +93,28 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memtrans_extended\
+output_dir = f'{checkpoint_root}/fineweb_rmm_fixed\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b16x4'
+_c{context_length}_b32x4'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=500000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(

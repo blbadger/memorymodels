@@ -30,7 +30,11 @@ decoder_dim = 512
 context_length = 512
 compression = 1
 n_layers = 8
+<<<<<<< HEAD
 n_heads = 8
+=======
+n_heads = 16
+>>>>>>> 9fdabd39db8a3d022fc2d9b35f8185465c38f030
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -49,12 +53,17 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, random=False)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, random=True)
 
 #encoder_model = LlamaModel(configuration)
+<<<<<<< HEAD
 #model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=False)
+=======
+#model = MemoryTransformer(vocab_size, decoder_dim, encoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=1, n_heads=n_heads, random=True)
+>>>>>>> 9fdabd39db8a3d022fc2d9b35f8185465c38f030
 
 # model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
+safetensors.torch.load_model(model, '/home/azureuser/fineweb_autotrans_unroll_h16_e512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
 print (model)
 safetensors.torch.load_model(model, '/home/badger/fineweb_autotrans_unroll_h8_e512c1_d512_n8_c512_b32/checkpoint-200000/model.safetensors')

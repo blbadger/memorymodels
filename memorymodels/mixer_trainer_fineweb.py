@@ -41,9 +41,16 @@ heads = 0
 kernel = 8
 
 # mixer model initialization
+<<<<<<< HEAD
 #model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 #safetensors.torch.load_model(model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+=======
+encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+# encoder = AutoencodingMixerAutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
+safetensors.torch.load_model(encoder, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
+>>>>>>> 3bcb1ad2bb7719e1b2546d96080199d2940be1d3
 
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=0, kernel=1).float()
@@ -51,8 +58,21 @@ kernel = 8
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 
+<<<<<<< HEAD
 #encoder = model.encoder
 #model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel)
+=======
+print (model)
+#train_path = '/home/azureuser/fineweb-edu-tokenized-test-c512-lpad-8k-debatched'
+#test_path = '/home/azureuser/fineweb-edu-tokenized-test-c512-lpad-8k-debatched'
+#train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+#test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+
+#train_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
+#test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
+>>>>>>> 3bcb1ad2bb7719e1b2546d96080199d2940be1d3
 
 model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 

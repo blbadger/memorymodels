@@ -91,7 +91,8 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False,
+			  frozen_encoder=None):
 		super().__init__()
 		self.double_tokens = double_tokens
 		self.n_vocab = n_vocab
@@ -99,8 +100,13 @@ class AutoencodingMixer(nn.Module):
 			self.wte = nn.Linear(n_vocab, dim)
 		else:
 			self.wte = nn.Embedding(n_vocab, dim)
-			
-		self.encoderblocks = nn.ModuleList(
+		if frozen_encoder:
+			# enforce no grad on encoder
+			for _, param in frozen_encoder.named_parameters():
+				param.requires_grad = False
+			self.encoderblocks = frozen_encoder.to(device)
+		else:
+			self.encoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
 				length = length,
@@ -266,11 +272,18 @@ class AutoencodingTransfixer(nn.Module):
 
 class VariableMemoryMixer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False,
+			  frozen_encoder=None):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
-		self.encoderblocks = nn.ModuleList(
+		if frozen_encoder:
+			# freeze encoder params
+			for _, param in self.frozen_encoder.named_parameters():
+				param.requires_grad = False
+			self.encoderblocks = frozen_encoder
+		else:
+			self.encoderblocks = nn.ModuleList(
 				[MixerBlock(
 					dim = encoder_dim,
 					length = length,
@@ -379,11 +392,6 @@ class RecurrentMemoryMixer(nn.Module):
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		input_ids = input_ids.to(device)
-		embedding_array = []
-		i = 0
-		if self.no_memory:
-			i = 1e9
-			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
 
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		#input_embeddings = self.decoder_wte(input_ids)
@@ -395,6 +403,10 @@ class RecurrentMemoryMixer(nn.Module):
 				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
 			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)
 			x = torch.cat((encoder_embedding, decoder_embeds), dim=1)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3bcb1ad2bb7719e1b2546d96080199d2940be1d3
 			for block in self.decoderblocks:
 				x = block(x)
 

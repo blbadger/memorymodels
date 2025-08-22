@@ -18,7 +18,7 @@ import shutil
 from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
-from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
+from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
 
@@ -28,11 +28,11 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
-decoder_dim = 256
-context_length = 512
+encoder_dim = 128
+decoder_dim = 512
+context_length = 256
 compression = 1
-n_layers = 8
+n_layers = 16
 n_heads = 4
 
 vocab_size = 8000
@@ -40,15 +40,15 @@ llama_config_kwargs = {
     'hidden_size':decoder_dim,
     'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
-    'num_attention_heads': 4,
+    'num_attention_heads': n_heads,
     'vocab_size': vocab_size
 }
 
 # Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+#configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-# model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # uncomment for transformer autoencoder
 # Initializing a model from the llama-7b style configuration
@@ -60,22 +60,25 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
-										compression=compression, freeze_encoder=True)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 										compression=compression, freeze_encoder=True)
 
-#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
+#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=False)
+
+model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -92,7 +95,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozenencoder_transformer\
+output_dir = f'{checkpoint_root}/fineweb_rmt\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -131,4 +134,4 @@ if not os.path.isdir(output_dir):
 shutil.copy(code_path, output_dir)
 
 model.train()
-trainer.train()
+trainer.train(output_dir + '/checkpoint-112000')

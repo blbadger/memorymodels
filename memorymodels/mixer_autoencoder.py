@@ -398,7 +398,7 @@ class RecurrentMemoryMixer(nn.Module):
 		total_loss = 0
 		for c in range(self.n_chunks):
 			x = input_ids[:, c*self.tokenized_length: (c+1)*self.tokenized_length]
-			decoder_embeds = self.wte(x)
+			decoder_embeds = self.decoder_wte(x)
 			if c == 0:
 				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
 			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)
@@ -585,11 +585,15 @@ class FrozenMemoryMixer(nn.Module):
 
 
 class TruncatedModel(nn.Module):
-	def __init__(self, model):
+	def __init__(self, model, autoencoder=True):
 		super().__init__()
 		self.model_wte = model.wte
-		self.model_blocks = model.encoderblocks
-	
+		if autoencoder:
+			self.model_blocks = model.encoderblocks
+		else:
+			self.model_blocks = model.mixerblocks	
+
+
 	def forward(self, x):
 		x = self.model_wte(x.to(device))
 		for block in self.model_blocks:

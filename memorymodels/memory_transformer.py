@@ -69,7 +69,7 @@ class VariableMemoryTransformer(nn.Module):
 		super().__init__()
 
 		if frozen_encoder:
-			for _, param in frozen_encoder.named_parameters():
+			for _, param in self.frozen_encoder.named_parameters():
 				param.requires_grad = False
 			self.encoder = frozen_encoder
 		else:

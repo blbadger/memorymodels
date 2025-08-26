@@ -13,8 +13,10 @@ from datasets import load_dataset, load_from_disk
 from pathlib import Path
 from dotenv import load_dotenv
 
-from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel
+from mixer_multiconv import MultiHeadedMixer
+from mixer_autoencoder import AutoencodingMixer, FrozenMemoryMixer, TruncatedModel, VariableMemoryMixer
 import warnings
+from dotenv import load_dotenv
 
 load_dotenv()
 data_root = os.getenv('DATA_ROOT')
@@ -39,22 +41,32 @@ kernel = 16
 unroll = True
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=unroll)
-autoencoder_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000")
-load_path = autoencoder_path / "model.safetensors"
-print (pretrained_autoencoder)
+pretrained_autoencoder = AutoencodingMixer(n_vocab, 1024, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=True)
+load_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors")
+
+# mixer model initialization
+#pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
+#autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
+
+#pretrained_autoencoder = MultiHeadedMixer(n_vocab, decoder_dim, 16, length=tokenized_length, heads=4).float().to(device)
+#autoencoder_path = Path(f"{checkpoint_root}/Desktop/fineweb_mixer_4h_d1024_n16_c512_b64x2/checkpoint-200000")
+#load_path = autoencoder_path / "model.safetensors"
+#print (pretrained_autoencoder)
 
 # load encoder
-print (pretrained_autoencoder.wte.weight)
+#print (pretrained_autoencoder.wte.weight)
 safetensors.torch.load_model(pretrained_autoencoder, load_path)
-print (pretrained_autoencoder.wte.weight)
+#print (pretrained_autoencoder.wte.weight)
 
 encoder = TruncatedModel(pretrained_autoencoder)
-model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0, kernel=kernel).float()
+print (encoder)
+#model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0, kernel=kernel).float()
+model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, n_heads=0, kernel=1, n_chunks=4, no_memory=False, frozen_encoder=encoder)
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c2048-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c2048-8k"
+
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -63,9 +75,9 @@ train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 16
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_mixer_ek16_extended\
+output_dir = f'{checkpoint_root}/fineweb_frozen_memmixer\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\

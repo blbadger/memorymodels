@@ -88,6 +88,8 @@ def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=
 		batch = True
 		tokenize = tokenization
 
+	train_text = train_text.filter(lambda x: x['token_count'] > 2000)
+	test_text = test_text.filter(lambda x: x['token_count'] > 2000)
 	train_dataset = train_text.map(tokenize, batched=batch)
 	test_dataset = test_text.map(tokenize, batched=batch)
 	train_dataset.save_to_disk(train_path)
@@ -109,7 +111,7 @@ def debatch(example):
 fineweb = True
 packed = False
 prefix = 'fineweb-edu' if fineweb else 'finemath'
-context_length = 1024
+context_length = 2048
 padding_side = 'right'
 pad_contraction = '-lpad' if padding_side == 'left' else ''
 train_path = f"{data_root}/{prefix}-tokenized-train-c{context_length}{pad_contraction}-8k"

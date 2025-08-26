@@ -279,9 +279,9 @@ class VariableMemoryMixer(nn.Module):
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
 		if frozen_encoder:
 			# freeze encoder params
-			for _, param in self.frozen_encoder.named_parameters():
+			for _, param in frozen_encoder.named_parameters():
 				param.requires_grad = False
-			self.encoderblocks = frozen_encoder
+			self.encoderblocks = frozen_encoder.model_blocks
 		else:
 			self.encoderblocks = nn.ModuleList(
 				[MixerBlock(
@@ -403,10 +403,7 @@ class RecurrentMemoryMixer(nn.Module):
 				encoder_embedding = torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device)
 			decoder_embeds[:, -1, :] = encoder_embedding.squeeze(1)
 			x = torch.cat((encoder_embedding, decoder_embeds), dim=1)
-<<<<<<< HEAD
-=======
-
->>>>>>> 3bcb1ad2bb7719e1b2546d96080199d2940be1d3
+			
 			for block in self.decoderblocks:
 				x = block(x)
 
@@ -588,11 +585,15 @@ class FrozenMemoryMixer(nn.Module):
 
 
 class TruncatedModel(nn.Module):
-	def __init__(self, model):
+	def __init__(self, model, autoencoder=True):
 		super().__init__()
 		self.model_wte = model.wte
-		self.model_blocks = model.encoderblocks
-	
+		if autoencoder:
+			self.model_blocks = model.encoderblocks
+		else:
+			self.model_blocks = model.mixerblocks	
+
+
 	def forward(self, x):
 		x = self.model_wte(x.to(device))
 		for block in self.model_blocks:

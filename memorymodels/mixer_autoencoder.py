@@ -594,7 +594,7 @@ class TruncatedModel(nn.Module):
 			self.model_blocks = model.mixerblocks	
 
 
-	def forward(self, x):
+	def forward(self, x, **args):
 		x = self.model_wte(x.to(device))
 		for block in self.model_blocks:
 			x = block(x)

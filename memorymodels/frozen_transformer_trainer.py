@@ -68,12 +68,17 @@ pretrained_autoencoder = AutoencodingMixer(vocab_size, 1024, 8, tokenized_length
 # load autoencoder weights and discard decoder
 load_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors")
 encoder = TruncatedModel(pretrained_autoencoder)
-
+print (encoder)
+encoder_dim = 1024 
+decoder_dim = 512 
+context_length = 512 
+compression = 1 
+n_layers = 16
+n_heads = 4
 model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
 								  fixed_memory=True, frozen_encoder=encoder)
 
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
-
 #model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
 #										compression=compression, freeze_encoder=True)
 

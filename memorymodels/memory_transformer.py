@@ -69,7 +69,7 @@ class VariableMemoryTransformer(nn.Module):
 		super().__init__()
 
 		if frozen_encoder:
-			for _, param in self.frozen_encoder.named_parameters():
+			for _, param in frozen_encoder.named_parameters():
 				param.requires_grad = False
 			self.encoder = frozen_encoder
 		else:
@@ -117,7 +117,9 @@ class VariableMemoryTransformer(nn.Module):
 		i = 0
 		while input_ids.shape[1] - self.tokenized_length > i:
 			input_chunk, attention_chunk = input_ids[:, i: i+self.tokenized_length], attention_mask[:, i: i+self.tokenized_length]
-			x = self.encoder(input_chunk, attention_mask=attention_chunk).last_hidden_state
+			x = self.encoder(input_chunk, attention_mask=attention_chunk)
+			if not torch.is_tensor(x):
+				x = x.last_hidden_state
 			
 			encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 			if self.compression:

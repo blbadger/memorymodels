@@ -65,23 +65,28 @@ class RecurrentMemoryTransformer(nn.Module):
 
 class VariableMemoryTransformer(nn.Module):
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False):
 		super().__init__()
 
-		if frozen_encoder:
-			for _, param in frozen_encoder.named_parameters():
-				param.requires_grad = False
-			self.encoder = frozen_encoder
+		self.no_memory = no_memory
+		self.decoder_dim = dim
+		if not self.no_memory:
+			if frozen_encoder:
+				for _, param in frozen_encoder.named_parameters():
+					param.requires_grad = False
+				self.encoder = frozen_encoder
+			else:
+				llama_config_kwargs = {
+					'hidden_size': encoder_dim,
+					'intermediate_size': 4*encoder_dim,
+					'num_hidden_layers': depth,
+					'num_attention_heads': n_heads,
+					'vocab_size': n_vocab
+				}
+				encoder_configuration = LlamaConfig(**llama_config_kwargs)
+				self.encoder = LlamaModel(encoder_configuration)
 		else:
-			llama_config_kwargs = {
-				'hidden_size': encoder_dim,
-				'intermediate_size': 4*encoder_dim,
-				'num_hidden_layers': depth,
-				'num_attention_heads': n_heads,
-				'vocab_size': n_vocab
-			}
-			encoder_configuration = LlamaConfig(**llama_config_kwargs)
-			self.encoder = LlamaModel(encoder_configuration)
+			self.encoder = None
 
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.decoder_proj = None
@@ -115,6 +120,10 @@ class VariableMemoryTransformer(nn.Module):
 		# generate encoder embeddings
 		embedding_array = []
 		i = 0
+		if self.no_memory:
+			i = 1e9
+			embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
+
 		while input_ids.shape[1] - self.tokenized_length > i:
 			input_chunk, attention_chunk = input_ids[:, i: i+self.tokenized_length], attention_mask[:, i: i+self.tokenized_length]
 			x = self.encoder(input_chunk, attention_mask=attention_chunk)

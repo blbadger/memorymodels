@@ -43,15 +43,6 @@ heads = 0
 kernel = 16
 
 # mixer model initialization
-<<<<<<< HEAD
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=True).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=0, random_input=False).float()
-safetensors.torch.load_model(model, '/home/badger/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors')
-print (model)
-
-train_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
-test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
-=======
 #model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
 model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel, random=False).float()
 #safetensors.torch.load_model(model, '/home/bbadger/Desktop/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32/checkpoint-200000/model.safetensors')
@@ -72,7 +63,6 @@ model.load_state_dict(state_dict["model"])
 
 test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
 #test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
->>>>>>> 9fdabd39db8a3d022fc2d9b35f8185465c38f030
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)

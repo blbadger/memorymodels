@@ -50,26 +50,31 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 #model = LlamaForCausalLM(configuration).float()
 
-# uncomment for transformer autoencoder
-# Initializing a model from the llama-7b style configuration
+# transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
+# transformer autoencoder (preconfigured blocks)
 #encoder_model = LlamaModel(configuration)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
+# unrolled embedding transformer autoencoder
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 										compression=compression, freeze_encoder=False)
-
+# embedding-augmented oracle memory model 
 #encoder_model = LlamaModel(configuration)
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder)
 
+# Memory transformer
+#encoder_model = LlamaModel(configuration)
+# model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder_model)
+
+# RMT
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 
 
@@ -85,24 +90,19 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer model
-	for i, _ in enumerate(train_data):
-		train_data[i] = train_data[i].flatten()
-
-	for i, _ in enumerate(test_data):
-		test_data[i] = test_data[i].flatten()
-	return train_data, test_data
-
-
 batch_size = 32
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
+
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_memory_transformer_fixed\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b{batch_size}x2'
+_c{context_length}_b{batch_size}x{n_devices}'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(

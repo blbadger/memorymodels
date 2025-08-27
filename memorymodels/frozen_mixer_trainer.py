@@ -44,45 +44,38 @@ unroll = True
 pretrained_autoencoder = AutoencodingMixer(n_vocab, 1024, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=True)
 load_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors")
 
-# mixer model initialization
-#pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
-#autoencoder_path = Path(f"{checkpoint_root}/fineweb_training/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000")
-
 #pretrained_autoencoder = MultiHeadedMixer(n_vocab, decoder_dim, 16, length=tokenized_length, heads=4).float().to(device)
 #autoencoder_path = Path(f"{checkpoint_root}/Desktop/fineweb_mixer_4h_d1024_n16_c512_b64x2/checkpoint-200000")
 #load_path = autoencoder_path / "model.safetensors"
-#print (pretrained_autoencoder)
 
 # load encoder
-#print (pretrained_autoencoder.wte.weight)
 safetensors.torch.load_model(pretrained_autoencoder, load_path)
-#print (pretrained_autoencoder.wte.weight)
 
 encoder = TruncatedModel(pretrained_autoencoder)
-print (encoder)
 #model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0, kernel=kernel).float()
 model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, n_heads=0, kernel=1, n_chunks=4, no_memory=False, frozen_encoder=encoder)
-print (model)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c2048-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c2048-8k"
 
-
-# if you have a new dataset, map before loading from disk
-#map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9 # max of 50 GB memory per device
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
 batch_size = 16
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
+
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_frozen_memmixer\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{tokenized_length}\
-_b{batch_size}x4'
+_b{batch_size}x{n_devices}'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
@@ -118,4 +111,4 @@ shutil.copy(code_path, output_dir)
 
 print (f'training begun: saving checkpoints in {output_dir}')
 trainer.train()
-#trainer.train('/home/badger/fineweb_frozen_mixer_ek16_extended_1024c1_d1024_n16_c512_b32x4/checkpoint-72000')
+#trainer.train(output_dir + '/checkpoint-72000')

@@ -61,23 +61,22 @@ model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, comp
 #encoder = model.encoder
 #model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel)
 
+# model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
+
 print (model)
 rain_path = f"{data_root}/finemath-tokenized-train-c2048-8k"
 test_path = f"{data_root}/finemath-tokenized-test-c2048-8k"
 
-model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
-
-print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
-# if you have a new dataset, map before loading from disk
-#map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-#test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
+batch_size = 32
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/finemath_nomemory_mixer_c512x4\
@@ -85,13 +84,12 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b32x2'
-
+_c{tokenized_length}_b{batch_size}x{n_devices}'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=batch_size,
+	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -114,16 +112,17 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
-#print (trainer.evaluate())
+
 # save driver snapshot
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
 shutil.copy(code_path, output_dir)
 print (f'training begun: saving checkpoints in {output_dir}')
-#torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
-trainer.train('/home/badger/fineweb_frozen_mixer_ek16_extended_1024c1_d1024_n16_c512_b32x4/checkpoint-72000')
 
-#trainer.train()
+# for overwriting training args
+#torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
+
+trainer.train()
 #trainer.train(output_dir + '/checkpoint-40000')
-trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')
+# trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')

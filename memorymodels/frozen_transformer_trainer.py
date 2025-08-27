@@ -79,8 +79,7 @@ model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers
 								  fixed_memory=True, frozen_encoder=encoder)
 
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
-#										compression=compression, freeze_encoder=True)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, ompression=compression, freeze_encoder=True)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -94,15 +93,11 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer model
-	for i, _ in enumerate(train_data):
-		train_data[i] = train_data[i].flatten()
-
-	for i, _ in enumerate(test_data):
-		test_data[i] = test_data[i].flatten()
-	return train_data, test_data
-
+batch_size = 32
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_frozen_memory_transformer\
@@ -110,13 +105,13 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b32x4'
+_c{context_length}_b{batch_size}x{n_devices}'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=batch_size,
+	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -147,5 +142,4 @@ print (f"training begun: saving results in {output_dir}")
 model.train()
 
 trainer.train()
-#trainer.train('/home/badger/fineweb_memory_transformer_fixed_256c1_d512_n16_c256_b32x4/checkpoint-24000')
 #trainer.train(output_dir + '/checkpoint-112000')

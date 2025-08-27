@@ -91,8 +91,7 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False,
-			  frozen_encoder=None):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False, frozen_encoder=None):
 		super().__init__()
 		self.double_tokens = double_tokens
 		self.n_vocab = n_vocab

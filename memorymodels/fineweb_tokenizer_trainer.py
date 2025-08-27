@@ -53,6 +53,6 @@ if __name__ == '__main__':
     training_corpus = get_training_corpus(dataset)
 
     # Train the new tokenizer
-    tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 2048000)
-    tokenizer.save_pretrained(f"{data_root}/tokenizer_fineweb_2m")
+    tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 8000)
+    tokenizer.save_pretrained(f"{data_root}/tokenizer_fineweb_8k")
     print ("Tokenizer saved")

@@ -122,7 +122,7 @@ class VariableMemoryTransformer(nn.Module):
 		i = 0
 		if self.no_memory:
 			i = 1e9
-			embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
+			embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.chunks)]
 
 		while input_ids.shape[1] - self.tokenized_length > i:
 			input_chunk, attention_chunk = input_ids[:, i: i+self.tokenized_length], attention_mask[:, i: i+self.tokenized_length]

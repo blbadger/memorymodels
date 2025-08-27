@@ -28,12 +28,12 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
-decoder_dim = 512
+encoder_dim = 1024
+decoder_dim = 1024
 context_length = 512
 compression = 1
-n_layers = 16
-n_heads = 4
+n_layers = 8
+n_heads = 8
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -45,7 +45,7 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-#configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
 #model = LlamaForCausalLM(configuration).float()
@@ -60,11 +60,11 @@ llama_config_kwargs = {
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 										compression=compression, freeze_encoder=True)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 										compression=compression, freeze_encoder=False)
 
 #encoder_model = LlamaModel(configuration)
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
@@ -72,16 +72,14 @@ model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers
 
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
-#										compression=compression, freeze_encoder=True)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -97,19 +95,21 @@ def reformat_inputs(train_data, test_data):
 	return train_data, test_data
 
 
+batch_size = 32
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_memory_transformer_fixed\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b32x4'
+_c{context_length}_b{batch_size}x2'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=batch_size,
+	per_device_eval_batch_size=batch_size,
+	gradient_accumulation_steps=1,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -130,6 +130,7 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
+print (f"training model, saving to {output_dir}")
 # save driver code snapshot in checkpoint dir
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):
@@ -138,7 +139,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-
 trainer.train()
-#trainer.train('/home/badger/fineweb_memory_transformer_fixed_256c1_d512_n16_c256_b32x4/checkpoint-24000')
 #trainer.train(output_dir + '/checkpoint-112000')

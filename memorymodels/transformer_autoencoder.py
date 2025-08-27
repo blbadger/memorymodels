@@ -86,11 +86,15 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
 
-        def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False):
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
-                self.decoder = decoder_model
+                if freeze_encoder:
+			for _, param in encoder_model.named_parameters():
+				param.requires_grad = False
+
+		self.decoder = decoder_model
                 self.lm_head = nn.Linear(dim, n_vocab, bias=False)
                 self.cel = nn.CrossEntropyLoss()
                 self.tokenized_length = tokenized_length
@@ -104,6 +108,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
                         self.up = nn.Linear(dim//compression, dim); self.compression=True
                 self.random_input = random
                 self.n_vocab = n_vocab
+	
 
         def forward(self, input_ids, labels=None, attention_mask=None):
                 if self.random_input:

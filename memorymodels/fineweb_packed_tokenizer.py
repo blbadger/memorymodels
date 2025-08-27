@@ -108,7 +108,7 @@ def debatch(example):
 	return pa.Table.from_pylist(debatched_inputs)
 
 # user-defined vals
-fineweb = True
+fineweb = False
 packed = False
 prefix = 'fineweb-edu' if fineweb else 'finemath'
 context_length = 2048

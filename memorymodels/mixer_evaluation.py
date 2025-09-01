@@ -10,11 +10,8 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 import safetensors
-<<<<<<< HEAD
-=======
 import pathlib
 import torch.distributed._shard.checkpoint as dist_cp
->>>>>>> 9fdabd39db8a3d022fc2d9b35f8185465c38f030
 
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer

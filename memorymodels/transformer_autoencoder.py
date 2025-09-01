@@ -91,10 +91,10 @@ class UnrolledAutoencodingTransformer(nn.Module):
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
                 if freeze_encoder:
-			for _, param in encoder_model.named_parameters():
-				param.requires_grad = False
+                        for _, param in encoder_model.named_parameters():
+                                param.requires_grad = False
 
-		self.decoder = decoder_model
+                self.decoder = decoder_model
                 self.lm_head = nn.Linear(dim, n_vocab, bias=False)
                 self.cel = nn.CrossEntropyLoss()
                 self.tokenized_length = tokenized_length

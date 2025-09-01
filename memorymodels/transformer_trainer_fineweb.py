@@ -43,7 +43,7 @@ llama_config_kwargs = {
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
 }
-
+print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 

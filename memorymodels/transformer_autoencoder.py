@@ -3,7 +3,7 @@ from prettytable import PrettyTable
 import torch
 from einops import rearrange
 import transformers
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalLM
 import torch.nn as nn
 import mlflow
 from datasets import load_dataset
@@ -69,18 +69,24 @@ class AbbreviatedModel(nn.Module):
 
         def __init__(self, model, depth=8, tokenized_length=512):
                 super().__init__()
-                self.model = model
+                if isinstance(model, LlamaForCausalLM):
+                	self.model = model.model
+                elif isinstance(model, LlamaModel):
+                        self.model = model
+                else:
+                        raise TypeError('model type not recognized')
+
                 self.depth = depth
                 self.position_ids = torch.tensor([[i for i in range(tokenized_length)]]).to(device)
 
         def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
-                # Matrix mult instead of embedding to prevent type incompatibility
+                # 'input_ids' is actually a float tensor, post-wte transformation
                 x = input_ids.to(device)
                 position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
-                position_embeddings = self.model.model.rotary_emb(x, position_ids)
+                position_embeddings = self.model.rotary_emb(x, position_ids)
 
                 for i in range(self.depth):
-                        x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                        x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
                 return x
 
 

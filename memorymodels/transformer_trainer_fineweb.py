@@ -33,7 +33,7 @@ decoder_dim = 1024
 context_length = 512
 compression = 1
 n_layers = 8
-n_heads = 8
+n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
@@ -60,12 +60,31 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-# unrolled embedding transformer autoencoder
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#safetensors.torch.load_model(encoder_model, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+# embedding-augmented oracle memory model 
+encoder_model = LlamaModel(configuration)
+encoder_model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
 
+# unrolled embedding transformer autoencoder
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+
+safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+
+llama_config_kwargs = { 
+    'hidden_size':decoder_dim//2,
+    'intermediate_size': 4*decoder_dim//2,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': 4,
+    'vocab_size': vocab_size
+}
+
+decoder_configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = AbbreviatedModel(encoder_model.encoder, tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
+
+print (model)
 # embedding-augmented oracle memory model 
 #encoder_model = LlamaModel(configuration)
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
@@ -82,7 +101,6 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
@@ -90,14 +108,14 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 32
+batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memory_transformer_fixed\
+output_dir = f'{checkpoint_root}/fineweb_frozen_transmemory_autoencoder_h4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

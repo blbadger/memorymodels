@@ -31,18 +31,19 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
-encoder_dim = 1024
+tokenized_length = 256
+encoder_dim = 512
 decoder_dim = 1024
 n_layers = 16
 compression = 1
 n_heads = 0
-kernel = 16
+kernel = 8
 unroll = True
 
 # mixer model initialization
-pretrained_autoencoder = AutoencodingMixer(n_vocab, 1024, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=True)
-load_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors")
+pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, 8, tokenized_length, n_heads=n_heads, kernel=16, unroll=True)
+load_path = Path(f"{checkpoint_root}/fineweb_autoencoding_mixer_unroll_k16_512c1_d512_n8_c256_b64x2/checkpoint-200000/model.safetensors")
+#load_path = Path(f"{checkpoint_root}/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/checkpoint-200000/model.safetensors")
 
 # mixer model initialization
 #pretrained_autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel)
@@ -61,11 +62,11 @@ safetensors.torch.load_model(pretrained_autoencoder, load_path)
 encoder = TruncatedModel(pretrained_autoencoder)
 print (encoder)
 #model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, n_heads=0, kernel=kernel).float()
-model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, n_heads=0, kernel=1, n_chunks=4, no_memory=False, frozen_encoder=encoder)
+model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, n_heads=0, kernel=kernel, n_chunks=4, no_memory=False, frozen_encoder=encoder)
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c2048-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c2048-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 
 # if you have a new dataset, map before loading from disk
@@ -75,9 +76,9 @@ train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-batch_size = 16
+batch_size = 32
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_memmixer\
+output_dir = f'{checkpoint_root}/fineweb_c256x4_frozen_mem_mixer\
 _{encoder_dim}c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -93,7 +94,8 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=8000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
-	fp16=True,
+	fp16=False,
+	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',

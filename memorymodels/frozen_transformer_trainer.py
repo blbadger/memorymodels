@@ -76,7 +76,7 @@ compression = 1
 n_layers = 16
 n_heads = 4
 model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-								  fixed_memory=True, frozen_encoder=encoder)
+								  fixed_memory=True, frozen_encoder=encoder, no_memory=True)
 
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 #model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
@@ -105,7 +105,7 @@ def reformat_inputs(train_data, test_data):
 
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_memory_transformer\
+output_dir = f'{checkpoint_root}/fineweb_nomemory_transformer_512x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

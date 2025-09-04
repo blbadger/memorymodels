@@ -111,7 +111,7 @@ def debatch(example):
 fineweb = True
 packed = False
 prefix = 'fineweb-edu' if fineweb else 'finemath'
-context_length = 2048
+context_length = 512
 padding_side = 'right'
 pad_contraction = '-lpad' if padding_side == 'left' else ''
 train_path = f"{data_root}/{prefix}-tokenized-train-c{context_length}{pad_contraction}-8k"

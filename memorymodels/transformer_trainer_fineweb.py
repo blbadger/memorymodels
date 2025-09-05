@@ -43,47 +43,61 @@ llama_config_kwargs = {
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
 }
-
+print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
 #model = LlamaForCausalLM(configuration).float()
 
-# uncomment for transformer autoencoder
-# Initializing a model from the llama-7b style configuration
+# transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 # model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
+# transformer autoencoder (preconfigured blocks)
 #encoder_model = LlamaModel(configuration)
 #decoder_model = LlamaModel(configuration)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
-encoder_model = LlamaForCausalLM(configuration)
-#safetensors.torch.load_model(encoder_model, '/home/badger/contrastive_finemath_transformer_512_n16_b32_lpad_penult/model.safetensors', strict=False) # no lm_head for retr models
-encoder_model = AbbreviatedModel(encoder_model, tokenized_length=context_length)
+# embedding-augmented oracle memory model 
+encoder_model = LlamaModel(configuration)
+encoder_model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
+
+# unrolled embedding transformer autoencoder
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+
+safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+
 llama_config_kwargs = { 
-    'hidden_size':decoder_dim,
-    'intermediate_size': 4*decoder_dim,
-    'num_hidden_layers': 8,
-    'num_attention_heads': n_heads,
+    'hidden_size':decoder_dim//2,
+    'intermediate_size': 4*decoder_dim//2,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': 4,
     'vocab_size': vocab_size
 }
-configuration = LlamaConfig(**llama_config_kwargs)
+
+decoder_configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = AbbreviatedModel(encoder_model.encoder, tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
+>>>>>>> 7e9a3f903c8f0ba4a31b665566e80eb99981ab6c
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 										compression=compression, freeze_encoder=True)
-
+print (model)
+# embedding-augmented oracle memory model 
 #encoder_model = LlamaModel(configuration)
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
 #model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder)
 
+# Memory transformer
+#encoder_model = LlamaModel(configuration)
+# model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder_model)
+
+# RMT
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, 
-#										compression=compression, freeze_encoder=True)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -97,15 +111,11 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer model
-	for i, _ in enumerate(train_data):
-		train_data[i] = train_data[i].flatten()
-
-	for i, _ in enumerate(test_data):
-		test_data[i] = test_data[i].flatten()
-	return train_data, test_data
-
+batch_size = 64
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_frozen_untrained_retrievalenc_unrolledautoencoder\
@@ -113,13 +123,14 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b32x4'
+_c{context_length}_b{batch_size}x{n_devices}'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=batch_size,
+	per_device_eval_batch_size=batch_size,
+	gradient_accumulation_steps=1,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -140,6 +151,7 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
+print (f"training model, saving to {output_dir}")
 # save driver code snapshot in checkpoint dir
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):
@@ -148,7 +160,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-
 trainer.train()
-#trainer.train('/home/badger/fineweb_memory_transformer_fixed_256c1_d512_n16_c256_b32x4/checkpoint-24000')
 #trainer.train(output_dir + '/checkpoint-112000')

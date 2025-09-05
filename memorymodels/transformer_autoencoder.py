@@ -3,7 +3,7 @@ from prettytable import PrettyTable
 import torch
 from einops import rearrange
 import transformers
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalLM
 import torch.nn as nn
 import mlflow
 from datasets import load_dataset
@@ -69,27 +69,37 @@ class AbbreviatedModel(nn.Module):
 
         def __init__(self, model, depth=8, tokenized_length=512):
                 super().__init__()
-                self.model = model
+                if isinstance(model, LlamaForCausalLM):
+                	self.model = model.model
+                elif isinstance(model, LlamaModel):
+                        self.model = model
+                else:
+                        raise TypeError('model type not recognized')
+
                 self.depth = depth
                 self.position_ids = torch.tensor([[i for i in range(tokenized_length)]]).to(device)
 
         def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
-                # Matrix mult instead of embedding to prevent type incompatibility
+                # 'input_ids' is actually a float tensor, post-wte transformation
                 x = input_ids.to(device)
                 position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
-                position_embeddings = self.model.model.rotary_emb(x, position_ids)
+                position_embeddings = self.model.rotary_emb(x, position_ids)
 
                 for i in range(self.depth):
-                        x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                        x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
                 return x
 
 
 class UnrolledAutoencodingTransformer(nn.Module):
 
-        def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False):
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
+                if freeze_encoder:
+                        for _, param in encoder_model.named_parameters():
+                                param.requires_grad = False
+
                 self.decoder = decoder_model
                 self.lm_head = nn.Linear(dim, n_vocab, bias=False)
                 self.cel = nn.CrossEntropyLoss()
@@ -104,6 +114,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
                         self.up = nn.Linear(dim//compression, dim); self.compression=True
                 self.random_input = random
                 self.n_vocab = n_vocab
+	
 
         def forward(self, input_ids, labels=None, attention_mask=None):
                 if self.random_input:

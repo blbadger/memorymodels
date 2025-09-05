@@ -91,8 +91,7 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False,
-			  frozen_encoder=None):
+	def __init__(self, n_vocab, dim, depth, length, compression=1, double_tokens=False, kernel=1, n_heads=0, unroll=True, random=False, frozen_encoder=None, clm_encoder=False):
 		super().__init__()
 		self.double_tokens = double_tokens
 		self.n_vocab = n_vocab
@@ -136,6 +135,7 @@ class AutoencodingMixer(nn.Module):
 			self.up = nn.Linear(dim//compression, dim)
 		self.unroll = unroll
 		self.dim = dim
+		self.clm_encoder = clm_encoder
 		#if unroll == True:
 		self.projection = nn.Linear(dim//2, dim)
 		self.random_input = random
@@ -155,8 +155,12 @@ class AutoencodingMixer(nn.Module):
 		x = self.wte(x)
 		for block in self.encoderblocks:
 			x = block(x)
-
-		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		
+		if self.clm_encoder:
+			encoder_embedding = x[:, -2, :].unsqueeze(1)
+		else:
+			encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
 			encoder_embedding = self.up(encoder_embedding)
@@ -583,23 +587,22 @@ class FrozenMemoryMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-
 class TruncatedModel(nn.Module):
-	def __init__(self, model, autoencoder=True):
-		super().__init__()
-		self.model_wte = model.wte
-		if autoencoder:
-			self.model_blocks = model.encoderblocks
-		else:
-			self.model_blocks = model.mixerblocks	
+        def __init__(self, model, autoencoder=True):
+                super().__init__()
+                self.model_wte = model.wte
+                if autoencoder:
+                        self.model_blocks = model.encoderblocks
+                else:
+                        self.model_blocks = model.mixerblocks   
 
 
-	def forward(self, x, **args):
-		x = self.model_wte(x.to(device))
-		for block in self.model_blocks:
-			x = block(x)
-		output = x
-		return output
+        def forward(self, x, **args):
+                x = self.model_wte(x.to(device))
+                for block in self.model_blocks:
+                        x = block(x)
+                output = x 
+                return output
 
 class ProjMemoryMixer(nn.Module):
 

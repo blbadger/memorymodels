@@ -10,16 +10,18 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 import safetensors
+import torch.distributed._shard.checkpoint as dist_cp
 
 from mixer_clm import LanguageMixer
 from mixer_multiconv import MultiHeadedMixer
 from mixer_clm import LanguageMixer
 from mixer_autoencoder import RecurrentMemoryMixer
-from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, VariableMemoryMixer, RecurrentMemoryMixer, ProjMemoryMixer
+from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer, FrozenMemoryMixer, VariableMemoryMixer
+from mixer_autoencoder import TruncatedModel, RecurrentMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
 from dotenv import load_dotenv
-
+import pathlib
 load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
@@ -45,14 +47,16 @@ kernel = 16
 # encoder = AutoencodingMixerAutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 #safetensors.torch.load_model(encoder, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False)
-#encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
-# encoder = AutoencodingMixerAutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
+
+encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+#encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 #safetensors.torch.load_model(encoder, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 #model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=0, kernel=1).float()
+model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
 #model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False)
+
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
 #model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
@@ -69,6 +73,7 @@ print (len(train_path[0]))
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
+
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
@@ -81,7 +86,11 @@ test_dataset = test_dataset.map(get_chunk, num_proc=12)
 
 mlflow.end_run()
 
-#test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
+batch_size = 32
+n_devices = 4
+# get number of devices (assumes that all visible devices are used for training)
+if torch.cuda.is_available():
+    n_devices = torch.cuda.device_count()
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_autoencoding_mixer_unroll_k16\
@@ -89,20 +98,19 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{tokenized_length}_b64x2'
-
+_c{tokenized_length}_b{batch_size}x{n_devices}'
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=batch_size,
+	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
-	fp16=False,
-        bf16=True,
+	fp16=True,
+	bf16=False,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
@@ -118,14 +126,19 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
-#print (trainer.evaluate())
+
 # save driver snapshot
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
 shutil.copy(code_path, output_dir)
+with open(output_dir + '/model.txt', 'w') as f:
+	print (model, file=f)
 print (f'training begun: saving checkpoints in {output_dir}')
+
+# for overwriting training args
 #torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
 
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-40000')
+#trainer.train(output_dir + '/checkpoint-192000')
+# trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')

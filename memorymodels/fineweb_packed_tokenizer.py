@@ -6,7 +6,6 @@ import pyarrow as pa
 import shutil
 from dotenv import load_dotenv
 
-
 load_dotenv()
 data_root = os.getenv('DATA_ROOT')
 
@@ -67,7 +66,7 @@ def tokenization(example):
 	return tokens
 
 
-def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True, context=512):
+def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True, context=512, minimum_length=0):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
@@ -88,8 +87,10 @@ def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=
 		batch = True
 		tokenize = tokenization
 
-	train_text = train_text.filter(lambda x: x['token_count'] > 2000)
-	test_text = test_text.filter(lambda x: x['token_count'] > 2000)
+	if minimum_length:
+		train_text = train_text.filter(lambda x: x['token_count'] > minimum_length)
+		test_text = test_text.filter(lambda x: x['token_count'] > minimum_length)
+		
 	train_dataset = train_text.map(tokenize, batched=batch)
 	test_dataset = test_text.map(tokenize, batched=batch)
 	train_dataset.save_to_disk(train_path)
@@ -108,7 +109,7 @@ def debatch(example):
 	return pa.Table.from_pylist(debatched_inputs)
 
 # user-defined vals
-fineweb = True
+fineweb = False
 packed = False
 prefix = 'fineweb-edu' if fineweb else 'finemath'
 context_length = 512

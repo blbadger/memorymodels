@@ -11,6 +11,7 @@ import datasets
 from datasets import load_dataset, load_from_disk
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 import safetensors
+from safetensors.torch import save_file, save_model
 from torch.ao.quantization.qconfig import QConfig
 from torch.ao.quantization.observer import default_observer, default_dynamic_quant_observer
 from torch.quantization.observer import MinMaxObserver, MovingAverageMinMaxObserver
@@ -136,13 +137,13 @@ model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, contex
 
 @torch.no_grad()
 def insert_identity(model):
-	compressed_dim = model.up.weight.dim[0]
+	compressed_dim = model.up.weight.shape[1]
+	print (model.up.weight.shape)
 	identity_weights = torch.eye(compressed_dim)
 	identity_transformation = nn.Linear(compressed_dim, compressed_dim, bias=False)
-	identity_transformation.weight.value = identity_weights
-	print (identity_transformation.weight.value)
+	identity_transformation.weight.data = identity_weights
 	model.up = nn.Sequential(identity_transformation, model.up)
-	save_file(model, 'updated_model.safetensors')
+	save_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 	return model
 
 model = insert_identity(model)
@@ -157,8 +158,9 @@ qconfig = QConfig(
 #    weight=default_dynamic_quant_observer.with_args(dtype=torch.float16),
 #)
 
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 
+#print (model.up[0].weight)
 #backend = "qnnpack"
 #model.down.qconfig = torch.quantization.get_default_qconfig(backend)
 #torch.backends.quantized.engine = backend
@@ -202,11 +204,11 @@ class CustomDtypeUpcast(nn.Module):
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
-quantized_model = copy.deepcopy(model)
-quantized_model.up = Linear8bitLt(64, 256)
-safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
-model = quantized_model.to(0)
-print(model.down)
+#quantized_model = copy.deepcopy(model)
+#quantized_model.up[0] = Linear8bitLt(64, 64, bias=False)
+#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
+#model = quantized_model.to(0)
+#print(model.down)
 
 activation = {}
 def get_activation(name):
@@ -214,13 +216,13 @@ def get_activation(name):
         activation[name] = output.detach()
     return hook
 model.down.register_forward_hook(get_activation('down'))
-model.up.register_forward_hook(get_activation('up'))
+model.up[0].register_forward_hook(get_activation('up[0]'))
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
 # test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
@@ -234,8 +236,8 @@ mlflow.end_run()
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -260,8 +262,9 @@ trainer = transformers.Trainer(
 print ('starting eval')
 
 print (trainer.evaluate())
+print (activation['down'], activation['up[0]'])
 #for i in range(len(activation['down'])):
 #    print (activation['down'][i])
 
-with open('data.json', 'w') as f:
-    json.dump(activation['down'], f)
+#with open('data.json', 'w') as f:
+#    json.dump(activation['down'], f)

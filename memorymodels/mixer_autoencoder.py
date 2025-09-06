@@ -103,7 +103,8 @@ class AutoencodingMixer(nn.Module):
 			# enforce no grad on encoder
 			for _, param in frozen_encoder.named_parameters():
 				param.requires_grad = False
-			self.encoderblocks = frozen_encoder.to(device)
+			self.encoderblocks = frozen_encoder.model_blocks.to(device)
+			#self.wte = frozen_encoder.model_wte.to(device)
 		else:
 			self.encoderblocks = nn.ModuleList(
 			[MixerBlock(

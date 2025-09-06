@@ -38,20 +38,22 @@ decoder_dim = 1024
 n_layers = 8
 compression = 1
 heads = 0
-kernel = 1
+kernel = 16
 
 # mixer model initialization
-frozen_encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
-safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
+#safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/retrieval/contrastive/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-70000/model.safetensors')
 #encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #encoder = AutoencodingMixerAutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 #safetensors.torch.load_model(encoder, '/home/azureuser/fineweb_autoencoding_mixer_noroll_k8_512c1_d512_n8_c512_b64x2/checkpoint-200000/model.safetensors')
-frozen_encoder = TruncatedModel(frozen_encoder, autoencoder=False).model_blocks
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False, frozen_encoder=frozen_encoder, clm_encoder=True)
-
+#frozen_encoder = TruncatedModel(frozen_encoder, autoencoder=False)
+autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
+safetensors.torch.load_model(autoencoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
+print (autoencoder)
+model.mixerblocks = autoencoder.encoderblocks
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=0, kernel=1).float()
 #model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False)
@@ -81,7 +83,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_frozen_clmencoder_autoencoder\
+output_dir = f'{checkpoint_root}/fineweb_pretrainedauto_mixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -92,7 +94,7 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=500,
+	warmup_steps=5000,
 	eval_steps=4000,
 	save_steps=8000,
 	gradient_accumulation_steps=1,
@@ -126,5 +128,5 @@ print (f'training begun: saving checkpoints in {output_dir}')
 #torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
 
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-40000')
+#trainer.train(output_dir + '/checkpoint-32000')
 # trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')

@@ -128,12 +128,24 @@ llama_config_kwargs = {
 
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
-
 # Initializing a model from the llama-7b style configuration
 encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
+
+@torch.no_grad()
+def insert_identity(model):
+	compressed_dim = model.up.weight.dim[0]
+	identity_weights = torch.eye(compressed_dim)
+	identity_transformation = nn.Linear(compressed_dim, compressed_dim, bias=False)
+	identity_transformation.weight.value = identity_weights
+	print (identity_transformation.weight.value)
+	model.up = nn.Sequential(identity_transformation, model.up)
+	save_file(model, 'updated_model.safetensors')
+	return model
+
+model = insert_identity(model)
 
 qconfig = QConfig(
     activation=MovingAverageMinMaxObserver.with_args(dtype=torch.quint8),
@@ -145,7 +157,7 @@ qconfig = QConfig(
 #    weight=default_dynamic_quant_observer.with_args(dtype=torch.float16),
 #)
 
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
 
 #backend = "qnnpack"
 #model.down.qconfig = torch.quantization.get_default_qconfig(backend)

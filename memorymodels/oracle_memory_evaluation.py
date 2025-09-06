@@ -190,10 +190,10 @@ class CustomDtypeUpcast(nn.Module):
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
-#quantized_model = copy.deepcopy(model)
-#quantized_model.up = Linear8bitLt(64, 256)
-#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
-#model = quantized_model.to(0)
+quantized_model = copy.deepcopy(model)
+quantized_model.up = Linear8bitLt(64, 256)
+safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+model = quantized_model.to(0)
 print(model.down)
 
 activation = {}

@@ -88,7 +88,7 @@ class VariableMemoryTransformer(nn.Module):
 		else:
 			self.encoder = None
 
-		self.wte = nn.Embedding(n_vocab, dim)
+		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_proj = None
 
 		llama_config_kwargs = {
@@ -125,7 +125,8 @@ class VariableMemoryTransformer(nn.Module):
 			embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.chunks)]
 
 		while input_ids.shape[1] - self.tokenized_length > i:
-			input_chunk, attention_chunk = input_ids[:, i: i+self.tokenized_length], attention_mask[:, i: i+self.tokenized_length]
+			input_chunk, attention_chunk = self.wte(input_ids[:, i: i+self.tokenized_length]), attention_mask[:, i: i+self.tokenized_length]
+			
 			x = self.encoder(input_chunk, attention_mask=attention_chunk)
 			if not torch.is_tensor(x):
 				x = x.last_hidden_state

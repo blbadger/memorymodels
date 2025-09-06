@@ -10,11 +10,8 @@ import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk
 import safetensors
-<<<<<<< HEAD
-=======
 import pathlib
 import torch.distributed._shard.checkpoint as dist_cp
->>>>>>> 9fdabd39db8a3d022fc2d9b35f8185465c38f030
 
 from mixer_multiconv import MultiHeadedMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer
@@ -34,35 +31,34 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
-encoder_dim = 1024
-decoder_dim = 1024
+tokenized_length = 256
+encoder_dim = 512
+decoder_dim = 512
 n_layers = 8
 compression = 1
 heads = 0
 kernel = 16
 
 # mixer model initialization
-#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random_input=False).float()
-model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel, random=False).float()
-#safetensors.torch.load_model(model, '/home/bbadger/Desktop/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32/checkpoint-200000/model.safetensors')
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=True).float()
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, 8, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel, random=False).float()
+safetensors.torch.load_model(model, '/home/badger/fineweb_autoencoding_mixer_unroll_k16_512c1_d512_n8_c256_b64x2/checkpoint-200000/model.safetensors')
 
-state_dict = {
-        "model": model.state_dict()
-    }
+#state_dict = {
+#        "model": model.state_dict()
+#    }
 
-checkpoint_path = pathlib.Path("/home/bbadger/Desktop/fineweb_tmemory_mixer_k4__1024c1_d1024_n8_c512_b32/checkpoint-200000")
-distcp_checkpoint_path = checkpoint_path / "pytorch_model_fsdp_0"
-dist_cp.load_state_dict(
-                state_dict=state_dict,
-                storage_reader = dist_cp.FileSystemReader(distcp_checkpoint_path),
-                no_dist=True,
-            )
+#checkpoint_path = pathlib.Path("/home/bbadger/Desktop/fineweb_tmemory_mixer_k4__1024c1_d1024_n8_c512_b32/checkpoint-200000")
+#distcp_checkpoint_path = checkpoint_path / "pytorch_model_fsdp_0"
+#dist_cp.load_state_dict(
+#                state_dict=state_dict,
+#                storage_reader = dist_cp.FileSystemReader(distcp_checkpoint_path),
+#                no_dist=True,
+#            )
+#model.load_state_dict(state_dict["model"])
 
-model.load_state_dict(state_dict["model"])
-
-test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
-#test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
+#test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
 #map_dataset(train_path, test_path)
@@ -70,8 +66,14 @@ datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
+def get_chunk(example):
+        example['input_ids'] = example['input_ids'][256:]
+        return example
+train_dataset = train_dataset.map(get_chunk, num_proc=12)
+test_dataset = test_dataset.map(get_chunk, num_proc=12)
+
 # filter left-padded inputs from test dataset
-test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
+#test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 mlflow.end_run()
 
 # descriptive name for output

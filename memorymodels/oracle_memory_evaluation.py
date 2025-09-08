@@ -134,6 +134,7 @@ encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/model.safetensors')
 
 safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
 @torch.no_grad()
@@ -145,6 +146,7 @@ def insert_identity(model):
 	identity_transformation.weight.data = identity_weights
 	model.up = nn.Sequential(identity_transformation, model.up)
 	save_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
+#	save_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 	return model
 
 model = insert_identity(model)
@@ -201,7 +203,7 @@ class CustomDtypeUpcast(nn.Module):
     def forward(self, x):
         return from_custom_float8(x)
 
-#model.down = nn.Sequential(model.down, CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
@@ -219,6 +221,7 @@ def get_activation(name):
 model.down.register_forward_hook(get_activation('down'))
 model.up[0].register_forward_hook(get_activation('up[0]'))
 
+print(model)
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -237,8 +240,8 @@ mlflow.end_run()
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=4,
+	per_device_eval_batch_size=4,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -263,9 +266,9 @@ trainer = transformers.Trainer(
 print ('starting eval')
 
 print (trainer.evaluate())
-print (activation['down'], activation['up[0]'])
-#for i in range(len(activation['down'])):
-#    print (activation['down'][i])
+#print (activation['down'], activation['up[0]'])
+#for i in range(10):
+#    print (activation['down'][i][0])
 
 #with open('data.json', 'w') as f:
 #    json.dump(activation['down'], f)

@@ -122,7 +122,7 @@ _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b{batch_size}x{n_devices}'
+_c{context_length}_b{batch_size}x{n_devices}_extended'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
@@ -139,7 +139,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000
+	max_steps=500000
 )
 
 trainer = transformers.Trainer(

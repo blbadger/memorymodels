@@ -20,6 +20,7 @@ import bitsandbytes as bnb
 from bitsandbytes.nn import Linear8bitLt, Linear4bit
 import copy
 import json
+import re
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
@@ -130,15 +131,14 @@ def insert_identity(model, module=None, temp_path='temp_model'):
 def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 	all_results = []
 	model_copy = copy.deepcopy(model)
-	print (model, model_copy)
 	for name, module in model.named_modules():
 		if (not isinstance(module, nn.Linear)) and (not isinstance(module, nn.Embedding)):
 			continue
-		copied_module = str('model_copy.' + name)
-		
+		name = re.sub(r'(\.)(\d+)(\.)', r'[\2].', name)
+		copied_module_name = str('model_copy.' + name)
 		if cast_to is not None:
 			new_layer = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
-			exec('model.' + name) = new_layer
+			exec('model.' + name + '= new_layer')
 		else:
 			# use bitsandbytes probe with Int8() quantization
 			model = insert_identity(model, module=module)
@@ -148,7 +148,7 @@ def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 			safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/{temp_path}')
 			model = quantized_model.to(device) # quantization active
 		
-		print (model)	
+		#print (model)	
 		trainer = transformers.Trainer(
 			model=model.to(device),
 			train_dataset=train_dataset,
@@ -158,8 +158,9 @@ def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 		)
 		results = trainer.evaluate()
 		print (name, results)
+		original_layer = model_copy
+		exec('model.' + name + '=' + copied_module_name)
 		all_results.append([name, results])
-		setattr(model, name, original_module)
 	return all_results
 
 
@@ -269,7 +270,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None).take(256)
+test_dataset = load_from_disk(test_path, keep_in_memory=None).take(4096)
 
 # filter left-padded inputs from test dataset
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])

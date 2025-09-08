@@ -129,10 +129,16 @@ def insert_identity(model, module=None, temp_path='temp_model'):
 @torch.no_grad()
 def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 	all_results = []
-	for module in model.modules():
-		original_module = copy.deepcopy(module)
+	model_copy = copy.deepcopy(model)
+	print (model, model_copy)
+	for name, module in model.named_modules():
+		if (not isinstance(module, nn.Linear)) and (not isinstance(module, nn.Embedding)):
+			continue
+		copied_module = str('model_copy.' + name)
+		
 		if cast_to is not None:
-			module = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
+			new_layer = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
+			exec('model.' + name) = new_layer
 		else:
 			# use bitsandbytes probe with Int8() quantization
 			model = insert_identity(model, module=module)
@@ -142,6 +148,7 @@ def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 			safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/{temp_path}')
 			model = quantized_model.to(device) # quantization active
 		
+		print (model)	
 		trainer = transformers.Trainer(
 			model=model.to(device),
 			train_dataset=train_dataset,
@@ -150,10 +157,9 @@ def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 			data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 		)
 		results = trainer.evaluate()
-		name = module.__class__.__name__
 		print (name, results)
 		all_results.append([name, results])
-		module = original_module
+		setattr(model, name, original_module)
 	return all_results
 
 
@@ -181,9 +187,8 @@ encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_e256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors')
-
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+print (model)
 # model = insert_identity(model)
 
 # qconfig = QConfig(
@@ -238,10 +243,10 @@ class CustomDtypeUpcast(nn.Module):
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
-quantized_model = copy.deepcopy(model)
-quantized_model.up[0] = Linear8bitLt(64, 64, bias=False)
-safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
-model = quantized_model.to(0)
+#quantized_model = copy.deepcopy(model)
+#quantized_model.up[0] = Linear8bitLt(64, 64, bias=False)
+#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
+#model = quantized_model.to(0)
 #print(model.down)
 
 activation = {}
@@ -264,7 +269,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None)
+test_dataset = load_from_disk(test_path, keep_in_memory=None).take(256)
 
 # filter left-padded inputs from test dataset
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])

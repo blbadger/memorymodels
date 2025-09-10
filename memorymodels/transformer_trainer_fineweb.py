@@ -28,17 +28,17 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
-decoder_dim = 512
+encoder_dim = 512
+decoder_dim = 1024
 context_length = 1024
-compression = 4
-n_layers = 16
+compression = 8
+n_layers = 24
 n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size':encoder_dim,
-    'intermediate_size': 4*encoder_dim,
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
@@ -48,7 +48,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-#model = LlamaForCausalLM(configuration).float()
+model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -61,8 +61,8 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # embedding-augmented oracle memory model 
-encoder_model = LlamaModel(configuration)
-model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=True)
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=True)
 
 # unrolled embedding transformer autoencoder
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -103,33 +103,33 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 8
+batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memtrans_noised\
+output_dir = f'{checkpoint_root}/fineweb_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b{batch_size}x{n_devices}_extended'
+_c{context_length}_b{batch_size}x{n_devices}'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	gradient_accumulation_steps=2,
+	gradient_accumulation_steps=1,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -139,7 +139,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=500000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(

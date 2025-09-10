@@ -128,7 +128,7 @@ def insert_identity(model, module=None, temp_path='temp_model'):
 	return model
 
 @torch.no_grad()
-def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
+def observe_sensitivities(model, cast_to=torch.float8_e5m2, weights=False):
 	all_results = []
 	model_copy = copy.deepcopy(model)
 	for name, module in model.named_modules():
@@ -137,7 +137,11 @@ def observe_sensitivities(model, cast_to=torch.float8_e4m3fn):
 		name = re.sub(r'(\.)(\d+)(\.)', r'[\2].', name)
 		copied_module_name = str('model_copy.' + name)
 		if cast_to is not None:
-			new_layer = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
+			if weights:
+				new_layer = module
+				new_layer.weight = nn.Parameter(module.weight.to(cast_to).to(torch.float32))
+			else:
+				new_layer = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
 			exec('model.' + name + '= new_layer')
 		else:
 			# use bitsandbytes probe with Int8() quantization
@@ -190,7 +194,7 @@ encoder_model = LlamaModel(configuration).float()
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
 print (model)
-# model = insert_identity(model)
+#model = insert_identity(model)
 
 # qconfig = QConfig(
 # 	activation=MovingAverageMinMaxObserver.with_args(dtype=torch.quint8),
@@ -246,7 +250,7 @@ class CustomDtypeUpcast(nn.Module):
 # bitsandbytes approach
 #quantized_model = copy.deepcopy(model)
 #quantized_model.up[0] = Linear8bitLt(64, 64, bias=False)
-#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/updated_model.safetensors')
+#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/temp_model')
 #model = quantized_model.to(0)
 #print(model.down)
 
@@ -271,7 +275,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None).take(4096)
-
+print (test_dataset[0])
 # filter left-padded inputs from test dataset
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 mlflow.end_run()
@@ -308,7 +312,7 @@ print (trainer.evaluate())
 #for i in range(10):
 #    print (activation['down'][i][0])
 
-results = observe_sensitivities(model)
+results = observe_sensitivities(model, weights=True)
 output = {'results': results}
 with open(f'{data_root}/model_sensitivities.json', 'w') as f:
    json.dump(results, f)

@@ -192,7 +192,7 @@ encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
 print (model)
 #model = insert_identity(model)
 
@@ -275,6 +275,10 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None).take(4096)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 0a1515f (minor updates)
 print (test_dataset[0])
 # filter left-padded inputs from test dataset
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])

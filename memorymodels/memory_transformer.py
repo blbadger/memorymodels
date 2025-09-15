@@ -252,7 +252,11 @@ class MemoryTransformer(nn.Module):
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
 			if self.noise_embedding:
+<<<<<<< HEAD
 				encoder_embedding += torch.rand(encoder_embedding.shape).to(device)*(2**-2) # assumes e4m3 target quant
+=======
+				encoder_embedding += torch.rand(encoder_embedding.shape).to(device)*(2**-3) # assumes e4m3 target quant
+>>>>>>> 0a1515f (minor updates)
 			if self.combination_dim == 'token':
 				encoder_embedding = self.up(encoder_embedding)
 		decoder_embeds = self.decoder_wte(input_ids)

@@ -110,14 +110,15 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 16
+batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_transformer\
+output_dir = f'{checkpoint_root}/fineweb_memtrans_-3noised\
+>>>>>>> 0a1515f (minor updates)
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

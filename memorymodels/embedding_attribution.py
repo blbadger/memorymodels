@@ -7,7 +7,7 @@ from transformers import AutoTokenizer
 import torch.nn as nn
 import mlflow
 import datasets
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, Dataset
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 import safetensors
 from safetensors.torch import save_file, save_model
@@ -27,8 +27,6 @@ checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
-
-
 encoder_dim = 256
 decoder_dim = 512
 context_length = 1024
@@ -44,19 +42,6 @@ llama_config_kwargs = {
 	'num_attention_heads': n_heads,
 	'vocab_size': vocab_size
 }
-
-# Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
-
-# Initializing a model from the llama-7b style configuration
-encoder_model = LlamaModel(configuration).float()
-
-#encoder_model = LlamaModel(configuration)
-# model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-
-model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) # or 
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
-print (model)
 
 class AttributableMemoryTransformer(MemoryTransformer):
 
@@ -133,7 +118,7 @@ def gradientxinput(model, input_ids):
 		isolated_loss.backward()
 		memory_grad = torch.sum(decoder_input_embeds.grad[..., 0])
 		memory_gradxinputs.append(memory_grad * decoder_input_embeds[..., 0])
-	memory_gradxinputs = torch.tensor(memory_gradxinput)
+	memory_gradxinputs = torch.tensor(memory_gradxinputs)
 	return memory_gradxinputs
 
 
@@ -156,7 +141,7 @@ def normalize_attributions(attributions, method='minmax'):
 		# attributions are scaled to [0, 1]
 		maximums = torch.max(dim=0)
 		mins = torch.max(dim=0)
-		ranges = maximums - minimums
+		ranges = maximums - mins
 		attributions -= mins
 		attributions /= ranges
 
@@ -165,7 +150,19 @@ def normalize_attributions(attributions, method='minmax'):
 
 
 if __name__ == '__main__':
-	print(model)
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
+
+	# Initializing a model from the llama-7b style configuration
+	encoder_model = LlamaModel(configuration).float()
+
+	#encoder_model = LlamaModel(configuration)
+	# model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
+
+	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) # or 
+	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+	print (model)
+
 	tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 	tokenizer.pad_token = tokenizer.eos_token
 	n_vocab = len(tokenizer)
@@ -175,10 +172,10 @@ if __name__ == '__main__':
 
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
-	train_dataset = load_from_disk(test_path, keep_in_memory=None)
+	train_dataset = load_from_disk(train_path, keep_in_memory=None)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None)
 	print (test_dataset[0])
-	# filter left-padded inputs from test dataset
-	#test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
+
 	mlflow.end_run()
 
 	batch_size = 32

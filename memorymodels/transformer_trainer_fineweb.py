@@ -28,17 +28,17 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 512
-decoder_dim = 1024
+encoder_dim = 256
+decoder_dim = 512
 context_length = 1024
-compression = 8
-n_layers = 24
+compression = 4
+n_layers = 16
 n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size':decoder_dim,
-    'intermediate_size': 4*decoder_dim,
+    'hidden_size':encoder_dim,
+    'intermediate_size': 4*encoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
@@ -48,7 +48,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -61,8 +61,8 @@ model = LlamaForCausalLM(configuration).float()
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # embedding-augmented oracle memory model 
-#encoder_model = LlamaModel(configuration)
-#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=True)
+encoder_model = LlamaModel(configuration)
+model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
 
 # unrolled embedding transformer autoencoder
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -117,7 +117,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_transformer\
+output_dir = f'{checkpoint_root}/fineweb_memtrans\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -160,4 +160,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-112000')
+#trainer.train(output_dir + '/checkpoint-8000')

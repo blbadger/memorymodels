@@ -192,7 +192,7 @@ encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors')
 print (model)
 #model = insert_identity(model)
 
@@ -201,7 +201,7 @@ print (model)
 # 	weight=MovingAverageMinMaxObserver.with_args(dtype=torch.qint8),
 # )
 
-# safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/updated_model.safetensors')
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/updated_model.safetensors')
 
 #print (model.up[0].weight)
 #backend = "qnnpack"
@@ -243,7 +243,7 @@ class CustomDtypeUpcast(nn.Module):
 	def forward(self, x):
 		return from_custom_float8(x)
 
-# model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+#model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e4m3fn), CastToDtype(torch.float32))
 
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
@@ -261,7 +261,7 @@ def get_activation(name):
 	return hook
 
 # model.down.register_forward_hook(get_activation('down'))
-# model.up[0].register_forward_hook(get_activation('up[0]'))
+#model.up[0].register_forward_hook(get_activation('up[0]'))
 
 print(model)
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
@@ -310,7 +310,7 @@ print (trainer.evaluate())
 
 #print (activation['down'], activation['up[0]'])
 #for i in range(10):
-#    print (activation['down'][i][0])
+#    print ([float(v) for v in activation['up[0]'][i][0]], ',')
 
 results = observe_sensitivities(model, weights=True)
 output = {'results': results}

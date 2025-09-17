@@ -187,21 +187,29 @@ if __name__ == '__main__':
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
 	test_dataset = load_from_disk(test_path, keep_in_memory=None)
-	print (test_dataset[0])
 
+	n_gpus = torch.cuda.device_count()
+	dataset_length = len(test_dataset)
+	device_chunk_size = int(dataset_length / n_gpus)
+	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
+	print (start, end)
+	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
 
-	batch_size = 32
+	print (test_dataset[0])
+	batch_size = 64
 	attributions = []
-	all_batched_samples = len(test_dataset) // batch_size + 1
+	ids = []
+	batched_samples = len(test_dataset) // batch_size + 1
 	
 	for sample_index in tqdm(range(batched_samples)):
 		batch = test_dataset[sample_index*batched_samples:sample_index*batched_samples + batch_size]
 		attributions.append(memory_occlusion(model, batch))
-
+		ids.append(batch['id'])
+	
 	attributions = torch.stack(attributions, dim=0)
 	attributions = normalize_attributions(attributions)
-	attributions_dict = {'memory_attribution': attributions}
+	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
 	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 

@@ -14,6 +14,10 @@ from safetensors.torch import save_file, save_model
 import copy
 import json
 import re
+from pprint import pprint
+from tqdm import tqdm
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
@@ -45,15 +49,15 @@ llama_config_kwargs = {
 
 class AttributableMemoryTransformer(MemoryTransformer):
 
-	def __init__(self, occlude_memory=False):
-		super().__init__()
-		self.occlude_memory = occlude_memory
-		self.cel = nn.CrossEntropyLoss(reduction=None)
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		# overwrite self.cel from parent to prevent loss reduction
+		self.cel = nn.CrossEntropyLoss(reduction='none')
 
-	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
+	def forward(self, input_ids, labels=None, attention_mask=None, occlude_memory=False, **kwargs):
 		if self.random:
 			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
-		input_ids = input_ids.to(device)
+		input_ids = input_ids.to(device_id)
 		if not self.use_transformer_encoder:
 			wte_embeds = self.wte(input_ids)
 			x = wte_embeds
@@ -66,7 +70,7 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
 			if self.noise_embedding:
-				encoder_embedding += torch.rand(encoder_embedding.shape).to(device)*(2**-2) # assumes e4m3 target quant
+				encoder_embedding += torch.rand(encoder_embedding.shape).to(device_id)*(2**-2) # assumes e4m3 target quant
 			if self.combination_dim == 'token':
 				encoder_embedding = self.up(encoder_embedding)
 		decoder_embeds = self.decoder_wte(input_ids)
@@ -74,15 +78,15 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		if self.combination_dim == 'token':
 			if self.decoder_proj:
 				encoder_embedding = self.decoder_proj(encoder_embedding)
-			if self.occlude_memory:
-				x = torch.cat((torch.zeros(encoder_embedding.shape), decoder_embeds), dim=1)
+			if occlude_memory:
+				x = torch.cat((torch.zeros(encoder_embedding.shape).to(device_id), decoder_embeds), dim=1)
 				if attention_mask is not None:
-					attention_mask = torch.cat((torch.zeros(input_ids.shape[0], 1).to(device), attention_mask), dim=1)
+					attention_mask = torch.cat((torch.zeros(input_ids.shape[0], 1).to(device_id), attention_mask), dim=1)
 
 			else:
 				x = torch.cat((encoder_embedding, decoder_embeds), dim=1) # concatenation on token dim
 				if attention_mask is not None:
-					attention_mask = torch.cat((torch.ones(input_ids.shape[0], 1).to(device), attention_mask), dim=1)
+					attention_mask = torch.cat((torch.ones(input_ids.shape[0], 1).to(device_id), attention_mask), dim=1)
 
 		elif self.combination_dim == 'embedding':
 			repeat_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
@@ -121,26 +125,30 @@ def gradientxinput(model, input_ids):
 	memory_gradxinputs = torch.tensor(memory_gradxinputs)
 	return memory_gradxinputs
 
-
+@torch.no_grad()
 def memory_occlusion(model, input_ids, output_measure=True):
 	"""
 	Occlusion attribution on memory embedding
 	"""
-
-	loss, output, _ = model.forward(input_ids, occlude_memory=False)
-	occluded_loss, occluded_output, _ = model.forward(input_ids, occlude_memory=True)
+	if not input_ids:
+		return None
+	input_ids, attention_mask = torch.tensor(input_ids['input_ids']).to(torch.long).to(device_id), torch.tensor(input_ids['attention_mask']).to(torch.long).to(device_id)
+	
+	loss, output, _ = model.forward(input_ids, attention_mask, occlude_memory=False)
+	occluded_loss, occluded_output, _ = model.forward(input_ids, attention_mask, occlude_memory=True)
 	if output_measure:
-		measure = torch.abs(occluded_output - output)
+		measure = torch.abs(occluded_output - output).to('cpu')
 	else:
 		# measure occlusion on unreduced model loss
-		measure = torch.abs(occluded_loss - loss)
+		measure = torch.abs(occluded_loss - loss).to('cpu')
+	measure = torch.sum(measure[..., 1:], dim=1) # measure is in shape [b, e, t] and we want to disregard the embedding output
 	return measure
 
 def normalize_attributions(attributions, method='minmax'):
 	if method == 'minmax':
 		# attributions are scaled to [0, 1]
-		maximums = torch.max(dim=0)
-		mins = torch.max(dim=0)
+		maximums = attributions.max(dim=1).values
+		mins = attributions.min(dim=1).values
 		ranges = maximums - mins
 		attributions -= mins
 		attributions /= ranges
@@ -159,9 +167,14 @@ if __name__ == '__main__':
 	#encoder_model = LlamaModel(configuration)
 	# model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 
-	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) # or 
-	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
-	print (model)
+	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
+	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_-3noised_256c4_d512_n16_c1024_b32x2/checkpoint-200000/model.safetensors')
+
+	gpu_count = torch.cuda.device_count()
+	dist.init_process_group("nccl")
+	rank = dist.get_rank()
+	device_id = rank % torch.cuda.device_count()
+	model = DDP(model.to(device_id), device_ids=[device_id])
 
 	tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 	tokenizer.pad_token = tokenizer.eos_token
@@ -179,17 +192,18 @@ if __name__ == '__main__':
 	mlflow.end_run()
 
 	batch_size = 32
-	sample_index = 0
 	attributions = []
-	while sample_index < len(test_dataset):
-		batch = test_dataset[sample_index, sample_index + batch_size]
+	all_batched_samples = len(test_dataset) // batch_size + 1
+	
+	for sample_index in tqdm(range(batched_samples)):
+		batch = test_dataset[sample_index*batched_samples:sample_index*batched_samples + batch_size]
 		attributions.append(memory_occlusion(model, batch))
 
 	attributions = torch.stack(attributions, dim=0)
 	attributions = normalize_attributions(attributions)
 	attributions_dict = {'memory_attribution': attributions}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k")
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 
 
 	

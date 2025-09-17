@@ -128,7 +128,7 @@ def insert_identity(model, module=None, temp_path='temp_model'):
 	return model
 
 @torch.no_grad()
-def observe_sensitivities(model, cast_to=torch.float8_e5m2, weights=False):
+def observe_sensitivities(model, cast_to=torch.float8_e4m3fn, weights=False):
 	all_results = []
 	model_copy = copy.deepcopy(model)
 	for name, module in model.named_modules():

@@ -118,7 +118,6 @@ if torch.cuda.is_available():
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_memtrans_-3noised\
->>>>>>> 0a1515f (minor updates)
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

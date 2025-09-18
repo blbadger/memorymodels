@@ -34,15 +34,9 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-<<<<<<< HEAD
 tokenized_length = 256
 encoder_dim = 512
 decoder_dim = 512
-=======
-tokenized_length = 512
-encoder_dim = 1024
-decoder_dim = 1024
->>>>>>> 1e8683e (minor updates)
 n_layers = 8
 compression = 1
 heads = 0
@@ -56,7 +50,6 @@ class modelwrap(nn.Module):
 
     def forward(input_ids, *args):
         return self.model(input_ids, *args)
-
 
 # mixer model initialization
 model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)

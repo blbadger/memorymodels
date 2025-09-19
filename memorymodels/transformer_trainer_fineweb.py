@@ -110,14 +110,19 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 16
+batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
+<<<<<<< HEAD
 output_dir = f'{checkpoint_root}/fineweb_memtrans\
+=======
+output_dir = f'{checkpoint_root}/fineweb_memtrans_-3noised\
+>>>>>>> 0a1515f (minor updates)
+>>>>>>> c1e2e3ace26a9b37b1276c17ee4e77b7d6aa8068
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -134,7 +139,8 @@ training_arguments = transformers.TrainingArguments(
 	eval_steps=4000,
 	save_steps=8000,
 	learning_rate=2e-4, 
-	fp16=True, 
+	fp16=False,
+	bf16=True, 
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',

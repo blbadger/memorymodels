@@ -34,13 +34,29 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
+<<<<<<< HEAD
 tokenized_length = 256
 encoder_dim = 512
 decoder_dim = 512
+=======
+tokenized_length = 512
+encoder_dim = 1024
+decoder_dim = 1024
+>>>>>>> 1e8683e (minor updates)
 n_layers = 8
 compression = 1
 heads = 0
-kernel = 16
+kernel = 1
+
+class modelwrap(nn.Module):
+
+    def __init__(self, model):
+        super().__init__() 
+        self.model = model
+
+    def forward(input_ids, *args):
+        return self.model(input_ids, *args)
+
 
 # mixer model initialization
 model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
@@ -48,15 +64,35 @@ model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, 
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/retrieval/contrastive/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-70000/model.safetensors')
-#frozen_encoder = TruncatedModel(frozen_encoder, autoencoder=False)
 
-autoencoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
-safetensors.torch.load_model(autoencoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
-print (autoencoder)
-model.mixerblocks = autoencoder.encoderblocks
+encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
+safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
+encoder = encoder.model
+print (encoder)
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=8)
+#state_dict = {
+#        "model": model.state_dict()
+#    }       
+#
+#checkpoint_path = pathlib.Path("/home/azureuser/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32")
+#distcp_checkpoint_path = checkpoint_path / "pytorch_model_fsdp_0"
+#dist_cp.load_state_dict(
+#                state_dict=state_dict,
+#                storage_reader = dist_cp.FileSystemReader(distcp_checkpoint_path),
+#                no_dist=True,
+#            )       
 
-model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
-model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
+#model.load_state_dict(state_dict["model"])
+#print (model)
+
+#frozen_encoder = encoder.encoderblocks
+frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=frozen_encoder, clm_encoder=False)
+print (model)
+#model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
+
 #model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False)
 
 #model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
@@ -68,13 +104,8 @@ model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_lengt
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
-
-print (len(train_path[0]))
-
-# if you have a new dataset, map before loading from disk
-#map_dataset(train_path, test_path)
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)

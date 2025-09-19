@@ -133,8 +133,8 @@ configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
-model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/model.safetensors')
+model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False, noise_embedding=False)
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/model.safetensors')
 
 @torch.no_grad()
 def insert_identity(model):
@@ -144,11 +144,11 @@ def insert_identity(model):
 	identity_transformation = nn.Linear(compressed_dim, compressed_dim, bias=False)
 	identity_transformation.weight.data = identity_weights
 	model.up = nn.Sequential(identity_transformation, model.up)
-	save_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/updated_model.safetensors')
+#	save_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-200000/updated_model.safetensors')
 #	save_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 	return model
 
-model = insert_identity(model)
+#model = insert_identity(model)
 
 qconfig = QConfig(
     activation=MovingAverageMinMaxObserver.with_args(dtype=torch.quint8),
@@ -160,7 +160,7 @@ qconfig = QConfig(
 #    weight=default_dynamic_quant_observer.with_args(dtype=torch.float16),
 #)
 
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/updated_model.safetensors')
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 
 #print (model.up[0].weight)
 #backend = "qnnpack"
@@ -202,13 +202,13 @@ class CustomDtypeUpcast(nn.Module):
     def forward(self, x):
         return from_custom_float8(x)
 
-model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+#model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
 #quantized_model = copy.deepcopy(model)
-#quantized_model.up[0] = Linear4bit(64, 64, bias=False)
-#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-96000/updated_model.safetensors')
+#quantized_model.up[0] = Linear8bitLt(64, 64, bias=False)
+#safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/fineweb_memtrans_noised_256c4_d512_n16_c1024_b8x4/checkpoint-200000/updated_model.safetensors')
 #model = quantized_model.to(device)
 #print(model.up)
 
@@ -217,8 +217,8 @@ def get_activation(name):
     def hook(model, input, output):
         activation[name] = output.detach()
     return hook
-model.down.register_forward_hook(get_activation('down'))
-model.up[0].register_forward_hook(get_activation('up[0]'))
+#model.down.register_forward_hook(get_activation('down'))
+#model.up[0].register_forward_hook(get_activation('up[0]'))
 
 print(model)
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
@@ -231,16 +231,16 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None).take(2048)
-
+test_dataset = load_from_disk(test_path, keep_in_memory=None).take(512)
+print (train_dataset[0])
 # filter left-padded inputs from test dataset
 #test_dataset = test_dataset.filter(lambda example: example["input_ids"][0] != tokenizer.encode('<|end_of_text|>')[1])
 mlflow.end_run()
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=4,
-	per_device_eval_batch_size=4,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
@@ -263,11 +263,11 @@ trainer = transformers.Trainer(
 )
 
 print ('starting eval')
-
+model.eval()
 print (trainer.evaluate())
 #print (activation['down'], activation['up[0]'])
-#for i in range(10):
-#    print (activation['down'][i][0])
+#fior i in range(10):
+#    print ([str(i.item()) + ',' for i in activation['down'][i][0]], ',')
 
 #with open('data.json', 'w') as f:
 #    json.dump(activation['down'], f)

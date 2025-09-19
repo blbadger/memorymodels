@@ -73,6 +73,8 @@ class AbbreviatedModel(nn.Module):
                 	self.model = model.model
                 elif isinstance(model, LlamaModel):
                         self.model = model
+                elif isinstance(model, AbbreviatedModel):
+                        self.model = model
                 else:
                         raise TypeError('model type not recognized')
 

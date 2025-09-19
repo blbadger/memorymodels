@@ -148,16 +148,19 @@ def memory_occlusion(model, input_ids, output_measure=True):
 	return measure
 
 def normalize_attributions(attributions, method='minmax'):
-	if method == 'minmax':
-		# attributions are scaled to [0, 1]
-		maximums = attributions.max(dim=1).values
-		mins = attributions.min(dim=1).values
-		ranges = maximums - mins
-		attributions -= mins
-		attributions /= ranges
-
-	entropy_estimates = 1 - attributions
-	return entropy_estimates
+	all_estimates = []
+	for attribution in attributions:
+		if method == 'minmax':
+			# attributions are scaled to [0, 1]
+			maximums = attribution.max(dim=1).values
+			mins = attribution.min(dim=1).values
+			ranges = maximums - mins
+			print (mins.shape)
+			attribution -= mins.repeat(attribution.shape[1]).reshape(attribution.shape[0], attribution.shape[1])
+			attribution /= ranges.repeat(attribution.shape[1]).reshape(attribution.shape[0], attribution.shape[1])
+		entropy_estimates = 1 - attribution
+		all_estimates.append(entropy_estimates)
+	return all_estimates
 
 
 if __name__ == '__main__':
@@ -189,7 +192,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(train_path, keep_in_memory=None).take(4000000)
+	test_dataset = load_from_disk(train_path, keep_in_memory=None)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -210,7 +213,7 @@ if __name__ == '__main__':
 		attributions.append(memory_occlusion(model, batch))
 		ids.append(batch['id'])
 	
-	attributions = torch.stack(attributions, dim=0)
+	print ([a.shape for a in attributions])
 	attributions = normalize_attributions(attributions)
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)

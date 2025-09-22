@@ -13,10 +13,11 @@ attributions_datasets = [
 attributions_dataset = concatenate_datasets(attributions_datasets)
 
 # flatten attribution dataset and rename col to match token dataset
-attributions_dataset.set_format('torch', columns=['ids, memory_attribution'])
+attributions_dataset.set_format('torch', columns=['ids', 'memory_attribution'])
 attributions_dataset.rename_column('ids', 'id')
 
 # load token dataset, join on id, and save
 token_dataset = load_from_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k")
+print (token_dataset[0], attributions_dataset[0])
 all_dataset = token_dataset.join(attributions_dataset, on='id', how='outer')
 all_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-attr-8k")

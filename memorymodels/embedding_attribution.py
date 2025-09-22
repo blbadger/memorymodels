@@ -153,13 +153,13 @@ def normalize_attributions(attributions, method='minmax'):
 		if method == 'minmax':
 			# attributions are scaled to [0, 1]
 			maximums = attribution.max(dim=1).values
-			mins = attribution.min(dim=1).values
+			mins = torch.where(attribution>0., attribution, torch.inf).min(dim=1).values
 			ranges = maximums - mins
-			print (mins.shape)
-			attribution -= mins.repeat(attribution.shape[1]).reshape(attribution.shape[0], attribution.shape[1])
-			attribution /= ranges.repeat(attribution.shape[1]).reshape(attribution.shape[0], attribution.shape[1])
-		entropy_estimates = 1 - attribution
-		all_estimates.append(entropy_estimates)
+			broadcasted_mins = mins.expand(attribution.shape[1], -1).T
+			attribution -= broadcasted_mins 
+			broadcasted_ranges = ranges.expand(attribution.shape[1], -1).T
+			attribution /= broadcasted_ranges
+		all_estimates.append(attribution)
 	return all_estimates
 
 
@@ -187,37 +187,47 @@ if __name__ == '__main__':
 	n_vocab = len(tokenizer)
 
 	train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-	test_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(train_path, keep_in_memory=None)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
 	device_chunk_size = int(dataset_length / n_gpus)
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
-	print (start, end)
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-
-	print (test_dataset[0])
 	batch_size = 64
 	attributions = []
 	ids = []
-	batches = len(test_dataset) // (batch_size) + 1
-	
+	if len(test_dataset) % batch_size == 0:
+		batches = len(test_dataset) // batch_size
+	else:
+		batches = len(test_dataset) // (batch_size) + 1
+
+	masks = []	
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
-		attributions.append(memory_occlusion(model, batch))
+		mask = torch.tensor(batch['attention_mask'])
+		attributions.append(memory_occlusion(model, batch) * mask)
 		ids.append(batch['id'])
-	
-	print ([a.shape for a in attributions])
+
+	tokenizer.pad_token = tokenizer.eos_token
 	attributions = normalize_attributions(attributions)
+	#print_attributions = []
+	#for i, attribution in enumerate(attributions[0]):
+	#	if test_dataset[i]['input_ids'][0] != 1:
+	#		print_attributions.append(attribution.tolist())
+	#d = {'attributions': print_attributions}
+	#with open('/home/badger/attributions.json', 'w') as f:
+	#	json.dump(d, f)
+	
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-test-occlusion-lpad-8k_{rank}")
 
 
 	

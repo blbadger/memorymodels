@@ -151,6 +151,31 @@ def memory_occlusion(model, input_ids, output_measure='l1'):
 		measure = torch.abs(occluded_loss - loss).to('cpu')
 	return measure
 
+@torch.no_grad()
+def memory_shift(model, input_ids, output_measure='l1'):
+	"""
+	Slight occlusion attribution on memory embedding
+	"""
+	if not input_ids or len(input_ids) == 0:
+		return torch.tensor([])
+	input_ids, attention_mask = torch.tensor(input_ids['input_ids']).to(torch.long).to(device_id), torch.tensor(input_ids['attention_mask']).to(torch.long).to(device_id)
+	
+	try:
+		loss, output, _ = model.forward(input_ids, attention_mask, occlude_memory=False, noise_embedding=False)
+	except:
+		return torch.tensor([])
+	occluded_loss, occluded_output, _ = model.forward(input_ids, attention_mask, occlude_memory=False, noise_embedding=True)
+	if output_measure == 'l1':
+		measure = torch.abs(occluded_output - output).to('cpu')
+		measure = torch.sum(measure[..., 1:], dim=1) # measure is in shape [b, e, t] and we want to disregard the embedding output
+	elif output_measure == 'cosine':
+		cos = nn.CosineSimilarity(dim=1)	
+		measure = 1 - cos(occluded_output, output)[..., 1:].to('cpu')
+	elif output_measure == 'loss':
+		# measure occlusion on unreduced model loss
+		measure = torch.abs(occluded_loss - loss).to('cpu')
+	return measure
+
 def normalize_attributions(attributions, method='minmax'):
 	all_estimates = []
 	for attribution in attributions:
@@ -216,7 +241,8 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
-		attributions.append(memory_occlusion(model, batch, output_measure='cosine') * mask)
+		# attributions.append(memory_occlusion(model, batch, output_measure='cosine') * mask)
+		attributions.append(memory_shift(model, batch, output_measure='l1') * mask)
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token
@@ -226,7 +252,7 @@ if __name__ == '__main__':
 		if test_dataset[i]['input_ids'][0] != 1:
 			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
 	d = {'attributions': print_attributions}
-	with open('/home/badger/attributions.json', 'w') as f:
+	with open('/home/badger/noise_attributions.json', 'w') as f:
 		json.dump(d, f)
 	
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}

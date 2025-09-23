@@ -72,7 +72,7 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
 			if noise_embedding:
-				encoder_embedding += torch.rand(encoder_embedding.shape).to(device_id)*(2**-3) # assumes e4m3 target quant
+				encoder_embedding += torch.rand(encoder_embedding.shape).to(device_id)*(2**-2) # assumes e4m3 target quant
 			if self.combination_dim == 'token':
 				encoder_embedding = self.up(encoder_embedding)
 		decoder_embeds = self.decoder_wte(input_ids)
@@ -246,7 +246,7 @@ if __name__ == '__main__':
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token
-	#attributions = normalize_attributions(attributions)
+	attributions = normalize_attributions(attributions)
 	print_attributions = {}
 	for i, attribution in enumerate(attributions[0]):
 		if test_dataset[i]['input_ids'][0] != 1:

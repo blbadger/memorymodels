@@ -111,6 +111,12 @@ class AttributableMemoryTransformer(MemoryTransformer):
 
 		return loss, output, decoder_input_embeds
 
+def compute_grad(model, input_ids, attention_mask, token_index):
+	loss, _, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
+	isolated_loss = torch.sum(loss[..., token_index], dim=0)
+	isolated_loss.backward()
+	memory_grad = torch.abs(decoder_input_embeds.grad[..., 0]).detach()
+	return memory_grad.detach()
 
 def gradientxinput(model, input_ids, output_measure='l1'):
 	"""
@@ -123,10 +129,7 @@ def gradientxinput(model, input_ids, output_measure='l1'):
 	#print (loss.shape, output.shape)
 	memory_gradxinputs = []
 	for token_index in tqdm(range(1, len(input_ids[0]))):
-		loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
-		isolated_loss = torch.sum(loss[..., token_index], dim=0)
-		isolated_loss.backward()
-		memory_grad = torch.abs(decoder_input_embeds.grad[..., 0]).detach()
+		memory_grad = compute_grad(model, input_ids, attention_mask, token_index)
 		gxo = memory_grad[:, 1:] * decoder_input_embeds[..., 0][:, 1:]
 		memory_gradxinputs.append(gxo.to('cpu'))
 		model.zero_grad()

@@ -56,7 +56,7 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		# overwrite self.cel from parent to prevent loss reduction
 		self.cel = nn.CrossEntropyLoss(reduction='none')
 
-	def forward(self, input_ids, labels=None, attention_mask=None, occlude_memory=False, **kwargs):
+	def forward(self, input_ids, labels=None, attention_mask=None, occlude_memory=False, noise_embedding=False, **kwargs):
 		if self.random:
 			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
 		input_ids = input_ids.to(device_id)
@@ -71,8 +71,8 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
 		if self.compression:
 			encoder_embedding = self.down(encoder_embedding)
-			if self.noise_embedding:
-				encoder_embedding += torch.rand(encoder_embedding.shape).to(device_id)*(2**-2) # assumes e4m3 target quant
+			if noise_embedding:
+				encoder_embedding += torch.rand(encoder_embedding.shape).to(device_id)*(2**-3) # assumes e4m3 target quant
 			if self.combination_dim == 'token':
 				encoder_embedding = self.up(encoder_embedding)
 		decoder_embeds = self.decoder_wte(input_ids)
@@ -84,7 +84,6 @@ class AttributableMemoryTransformer(MemoryTransformer):
 				x = torch.cat((torch.zeros(encoder_embedding.shape).to(device_id), decoder_embeds), dim=1)
 				if attention_mask is not None:
 					attention_mask = torch.cat((torch.zeros(input_ids.shape[0], 1).to(device_id), attention_mask), dim=1)
-
 			else:
 				x = torch.cat((encoder_embedding, decoder_embeds), dim=1) # concatenation on token dim
 				if attention_mask is not None:
@@ -111,13 +110,13 @@ class AttributableMemoryTransformer(MemoryTransformer):
 
 		return loss, output, decoder_input_embeds
 
-def gradientxinput(model, input_ids):
+def gradientxinput(model, input_ids, output_meaure='l1'):
 	"""
 	Performs gradientxinput on the decoder of an embedding-augmented model
 	"""
 
 	# expects for input_ids to be a tensor
-	loss, output, decoder_input_embeds = model.forward(input_ids)
+	loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
 	memory_gradxinputs = []
 	for token_index in range(len(output[0])):
 		isolated_loss = loss[token_index]
@@ -197,7 +196,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(train_path, keep_in_memory=None)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(128)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -205,7 +204,7 @@ if __name__ == '__main__':
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size = 64
+	batch_size =128
 	attributions = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:
@@ -217,22 +216,22 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
-		attributions.append(memory_occlusion(model, batch, output_measure='l1') * mask)
+		attributions.append(memory_occlusion(model, batch, output_measure='cosine') * mask)
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token
-	attributions = normalize_attributions(attributions)
-	#print_attributions = []
-	#for i, attribution in enumerate(attributions[0]):
-	#	if test_dataset[i]['input_ids'][0] != 1:
-	#		print_attributions.append(attribution.tolist())
-	#d = {'attributions': print_attributions}
-	#with open('/home/badger/attributions.json', 'w') as f:
-	#	json.dump(d, f)
+	#attributions = normalize_attributions(attributions)
+	print_attributions = {}
+	for i, attribution in enumerate(attributions[0]):
+		if test_dataset[i]['input_ids'][0] != 1:
+			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
+	d = {'attributions': print_attributions}
+	with open('/home/badger/attributions.json', 'w') as f:
+		json.dump(d, f)
 	
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
+	#attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 
 
 	

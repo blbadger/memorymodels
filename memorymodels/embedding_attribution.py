@@ -55,7 +55,7 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		super().__init__(*args, **kwargs)
 		# overwrite self.cel from parent to prevent loss reduction
 		self.cel = nn.CrossEntropyLoss(reduction='none')
-
+	
 	def forward(self, input_ids, labels=None, attention_mask=None, occlude_memory=False, noise_embedding=False, **kwargs):
 		if self.random:
 			input_ids = torch.randint(1, self.n_vocab, input_ids.shape)
@@ -95,6 +95,7 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		
 		# feed pre-concatenated input embeddings to the transformer decoder
 		decoder_input_embeds = x
+		decoder_input_embeds.retain_grad()
 		x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 		output = self.lm_head(x.last_hidden_state)
 		if labels.dim() > 2:
@@ -110,22 +111,27 @@ class AttributableMemoryTransformer(MemoryTransformer):
 
 		return loss, output, decoder_input_embeds
 
-def gradientxinput(model, input_ids, output_meaure='l1'):
+
+def gradientxinput(model, input_ids, output_measure='l1'):
 	"""
 	Performs gradientxinput on the decoder of an embedding-augmented model
 	"""
 	input_ids, attention_mask = torch.tensor(input_ids['input_ids']).to(torch.long).to(device_id), torch.tensor(input_ids['attention_mask']).to(torch.long).to(device_id)
 
 	# expects for input_ids to be a tensor
-	loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
+	#loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
+	#print (loss.shape, output.shape)
 	memory_gradxinputs = []
-	for token_index in range(len(output[0])):
-		isolated_loss = loss[token_index]
+	for token_index in tqdm(range(1, len(input_ids[0]))):
+		loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
+		isolated_loss = torch.sum(loss[..., token_index], dim=0)
 		isolated_loss.backward()
-		memory_grad = torch.sum(torch.abs(decoder_input_embeds.grad[..., 0]), dim=1)
-		memory_gradxinputs.append(memory_grad * decoder_input_embeds[..., 0])
+		memory_grad = torch.abs(decoder_input_embeds.grad[..., 0]).detach()
+		gxo = memory_grad[:, 1:] * decoder_input_embeds[..., 0][:, 1:]
+		memory_gradxinputs.append(gxo.to('cpu'))
 		model.zero_grad()
-		
+		del loss, output, decoder_input_embeds		
+
 	memory_gradxinputs = torch.tensor(memory_gradxinputs).to('cpu')
 	return memory_gradxinputs
 
@@ -206,7 +212,7 @@ if __name__ == '__main__':
 	# model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 
 	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
-	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=False) # no decoder_input_embeds param in original model
 
 	gpu_count = torch.cuda.device_count()
 	dist.init_process_group("nccl")
@@ -224,7 +230,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(128)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(32)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -232,7 +238,7 @@ if __name__ == '__main__':
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size =128
+	batch_size = 32
 	attributions = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:
@@ -245,7 +251,8 @@ if __name__ == '__main__':
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
 		# attributions.append(memory_occlusion(model, batch, output_measure='cosine') * mask)
-		attributions.append(memory_shift(model, batch, output_measure='l1') * mask)
+		#attributions.append(memory_shift(model, batch, output_measure='l1') * mask)
+		attributions.append(gradientxinput(model, batch, output_measure='l1') * mask)
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token

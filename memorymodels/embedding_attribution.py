@@ -116,7 +116,8 @@ def compute_grad(model, input_ids, attention_mask, token_index):
 	isolated_loss = torch.sum(loss[..., token_index], dim=0)
 	isolated_loss.backward()
 	memory_grad = torch.abs(decoder_input_embeds.grad[..., 0]).detach()
-	return memory_grad.detach()
+	model.zero_grad()
+	return memory_grad.detach(), decoder_input_embeds.detach()
 
 def gradientxinput(model, input_ids, output_measure='l1'):
 	"""
@@ -129,12 +130,10 @@ def gradientxinput(model, input_ids, output_measure='l1'):
 	#print (loss.shape, output.shape)
 	memory_gradxinputs = []
 	for token_index in tqdm(range(1, len(input_ids[0]))):
-		memory_grad = compute_grad(model, input_ids, attention_mask, token_index)
+		memory_grad, decoder_input_embeds = compute_grad(model, input_ids, attention_mask, token_index)
 		gxo = memory_grad[:, 1:] * decoder_input_embeds[..., 0][:, 1:]
 		memory_gradxinputs.append(gxo.to('cpu'))
-		model.zero_grad()
-		del loss, output, decoder_input_embeds		
-
+		
 	memory_gradxinputs = torch.tensor(memory_gradxinputs).to('cpu')
 	return memory_gradxinputs
 
@@ -217,11 +216,16 @@ if __name__ == '__main__':
 	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
 	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=False) # no decoder_input_embeds param in original model
 
-	gpu_count = torch.cuda.device_count()
-	dist.init_process_group("nccl")
-	rank = dist.get_rank()
-	device_id = rank % torch.cuda.device_count()
-	model = DDP(model.to(device_id), device_ids=[device_id])
+	use_ddp = False
+	if not use_ddp:	
+		device_id = 0	
+		model = model.to(device)
+	else:
+		gpu_count = torch.cuda.device_count()
+		dist.init_process_group("nccl")
+		rank = dist.get_rank()
+		device_id = rank % torch.cuda.device_count()
+		model = DDP(model.to(device_id), device_ids=[device_id])
 
 	tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 	tokenizer.pad_token = tokenizer.eos_token
@@ -233,7 +237,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(32)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(16)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -241,7 +245,7 @@ if __name__ == '__main__':
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size = 32
+	batch_size = 16
 	attributions = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:

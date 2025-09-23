@@ -114,6 +114,7 @@ def gradientxinput(model, input_ids, output_meaure='l1'):
 	"""
 	Performs gradientxinput on the decoder of an embedding-augmented model
 	"""
+	input_ids, attention_mask = torch.tensor(input_ids['input_ids']).to(torch.long).to(device_id), torch.tensor(input_ids['attention_mask']).to(torch.long).to(device_id)
 
 	# expects for input_ids to be a tensor
 	loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
@@ -121,9 +122,11 @@ def gradientxinput(model, input_ids, output_meaure='l1'):
 	for token_index in range(len(output[0])):
 		isolated_loss = loss[token_index]
 		isolated_loss.backward()
-		memory_grad = torch.sum(decoder_input_embeds.grad[..., 0])
+		memory_grad = torch.sum(torch.abs(decoder_input_embeds.grad[..., 0]), dim=1)
 		memory_gradxinputs.append(memory_grad * decoder_input_embeds[..., 0])
-	memory_gradxinputs = torch.tensor(memory_gradxinputs)
+		model.zero_grad()
+		
+	memory_gradxinputs = torch.tensor(memory_gradxinputs).to('cpu')
 	return memory_gradxinputs
 
 @torch.no_grad()

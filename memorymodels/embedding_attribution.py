@@ -26,6 +26,8 @@ from dotenv import load_dotenv
 
 warnings.filterwarnings(action='ignore')
 
+torch.set_printoptions(threshold=4)
+
 load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
@@ -126,7 +128,7 @@ def gradientxinput(model, input_ids):
 	return memory_gradxinputs
 
 @torch.no_grad()
-def memory_occlusion(model, input_ids, output_measure=True):
+def memory_occlusion(model, input_ids, output_measure='l1'):
 	"""
 	Occlusion attribution on memory embedding
 	"""
@@ -139,12 +141,15 @@ def memory_occlusion(model, input_ids, output_measure=True):
 	except:
 		return torch.tensor([])
 	occluded_loss, occluded_output, _ = model.forward(input_ids, attention_mask, occlude_memory=True)
-	if output_measure:
+	if output_measure == 'l1':
 		measure = torch.abs(occluded_output - output).to('cpu')
-	else:
+		measure = torch.sum(measure[..., 1:], dim=1) # measure is in shape [b, e, t] and we want to disregard the embedding output
+	elif output_measure == 'cosine':
+		cos = nn.CosineSimilarity(dim=1)	
+		measure = 1 - cos(occluded_output, output)[..., 1:].to('cpu')
+	elif output_measure == 'loss':
 		# measure occlusion on unreduced model loss
 		measure = torch.abs(occluded_loss - loss).to('cpu')
-	measure = torch.sum(measure[..., 1:], dim=1) # measure is in shape [b, e, t] and we want to disregard the embedding output
 	return measure
 
 def normalize_attributions(attributions, method='minmax'):
@@ -192,7 +197,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None)
+	test_dataset = load_from_disk(train_path, keep_in_memory=None)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -212,7 +217,7 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
-		attributions.append(memory_occlusion(model, batch) * mask)
+		attributions.append(memory_occlusion(model, batch, output_measure='l1') * mask)
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token
@@ -227,7 +232,7 @@ if __name__ == '__main__':
 	
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-test-occlusion-lpad-8k_{rank}")
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 
 
 	

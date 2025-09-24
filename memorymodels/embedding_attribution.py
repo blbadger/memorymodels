@@ -112,8 +112,9 @@ class AttributableMemoryTransformer(MemoryTransformer):
 		return loss, output, decoder_input_embeds
 
 def compute_grad(model, input_ids, attention_mask, token_index):
-	loss, _, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
-	isolated_loss = torch.sum(loss[..., token_index], dim=0)
+	_, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False, noise_embedding=False)
+	# output is in shape [b e t]
+	isolated_loss = torch.sum(output[..., token_index], dim=(0, 1)) # sum accross embedding and batch dims
 	isolated_loss.backward()
 	memory_grad = decoder_input_embeds.grad[:, 0, :].detach()
 	model.zero_grad()
@@ -253,24 +254,24 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
-		attributions.append(memory_occlusion(model, batch, output_measure='l1') * mask)
+		# attributions.append(memory_occlusion(model, batch, output_measure='l1') * mask)
 		#attributions.append(memory_shift(model, batch, output_measure='l1') * mask)
-		#attributions.append(gradientxinput(model, batch, output_measure='l1') * mask)
+		attributions.append(gradientxinput(model, batch, output_measure='l1') * mask)
 		ids.append(batch['id'])
 
-	#tokenizer.pad_token = tokenizer.eos_token
-	#attributions = normalize_attributions(attributions)
-	#print_attributions = {}
-	#for i, attribution in enumerate(attributions[0]):
-	#	if test_dataset[i]['input_ids'][0] != 1:
-	#		print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
-	#d = {'attributions': print_attributions}
-	#with open('/home/badger/gxo_attributions.json', 'w') as f:
-	#	json.dump(d, f)
+	tokenizer.pad_token = tokenizer.eos_token
+	attributions = normalize_attributions(attributions)
+	print_attributions = {}
+	for i, attribution in enumerate(attributions[0]):
+		if test_dataset[i]['input_ids'][0] != 1:
+			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
+	d = {'attributions': print_attributions}
+	with open('/home/badger/gxo_attributions.json', 'w') as f:
+		json.dump(d, f)
 	
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
+	#attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 
 
 	

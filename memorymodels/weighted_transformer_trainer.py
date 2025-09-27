@@ -28,8 +28,21 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-cel = torch.nn.CrossEntropyLoss()
-
+class WeightedModel(torch.nn.Module):
+    def __init__(self, model, hidden_dim, tokenizer_size):
+        self.lm_head = torch.nn.Linear(hidden_dim, tokenizer_size)
+        self.model = model
+        
+    def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
+        model_output = self.model(input_ids, attention_mask)
+        model_output = self.lm_head(model_output)
+        shifted_output = model_output[..., :-1]
+        shifted_labels = labels[..., 1:]
+        weights = 1 - attribution # complement of attributions
+        cel = torch.nn.CrossEntropyLoss(weight=weights)
+        loss = cel(shifted_output, shifted_labels)
+        return loss
+         
 def weighted_loss(model_output, input_tokens, *args, **kwargs):
     weights = 1 - attributions # complement of attributions
     cel = torch.nn.CrossEntropyLoss(weight=weights)

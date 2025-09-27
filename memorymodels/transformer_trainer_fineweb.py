@@ -48,7 +48,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-#model = LlamaForCausalLM(configuration).float()
+model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -61,8 +61,8 @@ configuration = LlamaConfig(**llama_config_kwargs)
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # embedding-augmented oracle memory model 
-encoder_model = LlamaModel(configuration)
-model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
+#encoder_model = LlamaModel(configuration)
+#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
 
 # unrolled embedding transformer autoencoder
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)

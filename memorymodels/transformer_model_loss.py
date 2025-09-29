@@ -29,14 +29,19 @@ warnings.filterwarnings(action='ignore')
 
 
 def unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
-    target = input_tokens[:, 1:]
-    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
+    target = input_tokens[:, 1:].to('cpu')
+    target = torch.where(target==1, -100, target)
+    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1].to('cpu')
     loss = loss_fn(model_output, target) 
+   # print (loss, target, model_output)
     if reduction:
-        non_pad_tokens = torch.sum(torch.where(input_tokens==-100, 0, 1))
+        non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
+        print (non_pad_tokens)
         loss = torch.sum(loss)/non_pad_tokens
+    print (loss)
     return loss
 
+loss_fn = None
 def test_losses():
     test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
     take_n = 32
@@ -47,9 +52,10 @@ def test_losses():
     batch = test_dataset[:take_n]
     input_ids = torch.stack([torch.tensor(l) for l in batch['input_ids']], dim=0).to('cuda')
     attention_mask = torch.stack([torch.tensor(l) for l in batch['attention_mask']], dim=0).to('cuda')
-    output = model(input_ids, attention_mask=attention_mask, labels=input_ids)
+    output = model.forward(input_ids, attention_mask=attention_mask, labels=input_ids)
     reshaped_output = rearrange(output.logits, 'b t e -> b e t')
 
+    global loss_fn
     loss_fn = nn.CrossEntropyLoss(reduction='none')
     losses = loss_fn(reshaped_output[:, :, :-1], input_ids[:, 1:])
 
@@ -115,14 +121,14 @@ if __name__ == '__main__':
 
     # Initializing a model from the llama-7b style configuration
     model = LlamaForCausalLM(configuration).float()
-    safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
+    safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_transformer_512_n16_c1024_b64_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
     model.eval()
 
     tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
 
-    use_ddp = True
+    use_ddp = False
     if not use_ddp: 
         device_id = 0   
         model = model.to(device)
@@ -151,7 +157,7 @@ if __name__ == '__main__':
     start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
     test_dataset = test_dataset.skip(start).take(end - start)
     mlflow.end_run()
-    batch_size = 32
+    batch_size = 16
     attributions = []
     ids = []
     if len(test_dataset) % batch_size == 0:
@@ -159,11 +165,16 @@ if __name__ == '__main__':
     else:
         batches = len(test_dataset) // (batch_size) + 1
 
+    test_losses()
     masks = []  
     for sample_index in tqdm(range(batches)):
         batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
-        mask = torch.tensor(batch['attention_mask'])
-        attributions.append(get_token_loss(model, batch) * mask)
+        attention_mask = torch.tensor(batch['attention_mask']).to(device)
+        input_ids = torch.tensor(batch['input_ids']).to(device)
+        with torch.no_grad():
+            outputs = model.forward(input_ids, attention_mask, labels=None)
+            loss = unreduced_loss(outputs, input_ids.to('cpu'), reduction=True)
+            attributions.append(loss)
 
     tokenizer.pad_token = tokenizer.eos_token
     attributions_dict = {'memory_attribution': attributions, 'ids': ids}

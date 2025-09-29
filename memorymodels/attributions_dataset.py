@@ -28,13 +28,13 @@ def add_attribution(example):
         batch_index, position_index = id_to_index[id]
         attribution = attributions_dataset[batch_index]['memory_attribution'][position_index]
         example['attribution'] = attribution
-    else:
+    elif 'attribution' not in example.keys():
         example['attribution'] = None
     return example
 
 # load token dataset, join on id, and save
 token_dataset = load_from_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k")
-token_dataset = token_dataset.map(add_attribution)
+token_dataset = token_dataset.map(add_attribution).skip(6000000)
 print(token_dataset[0])
 token_dataset = token_dataset.filter(lambda example: example["attribution"] is not None)
 first_set_dataset = load_from_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-attr-8k")

@@ -37,4 +37,6 @@ token_dataset = load_from_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-l
 token_dataset = token_dataset.map(add_attribution)
 print(token_dataset[0])
 token_dataset = token_dataset.filter(lambda example: example["attribution"] is not None)
-token_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-attr-8k")
+first_set_dataset = load_from_disk(f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-attr-8k")
+token_datset = concatenate_datasets([token_dataset, first_set_dataset])
+token_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-all-c1024-lpad-attr-8k")

@@ -233,7 +233,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(train_path, keep_in_memory=None).take(6000000)
+	test_dataset = load_from_disk(train_path, keep_in_memory=None).skip(6000000)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)

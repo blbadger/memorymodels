@@ -30,18 +30,24 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 class WeightedModel(torch.nn.Module):
     def __init__(self, model, hidden_dim, tokenizer_size):
+        super().__init__()
         self.lm_head = torch.nn.Linear(hidden_dim, tokenizer_size)
         self.model = model
+        self.cel = torch.nn.CrossEntropyLoss(reduction='none')
         
     def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
-        model_output = self.model(input_ids, attention_mask)
+        model_output = self.model(input_ids, attention_mask).last_hidden_state
         model_output = self.lm_head(model_output)
+        model_output = rearrange(model_output, 'b t e -> b e t')
+
         shifted_output = model_output[..., :-1]
         shifted_labels = labels[..., 1:]
         weights = 1 - attribution # complement of attributions
-        cel = torch.nn.CrossEntropyLoss(weight=weights)
-        loss = cel(shifted_output, shifted_labels)
-        return loss
+        loss = self.cel(shifted_output, shifted_labels)
+        loss *= weights[..., :-1]
+        nonpad_tokens = torch.sum(attention_mask)
+        loss = torch.sum(loss) / nonpad_tokens
+        return loss, model_output
          
 def weighted_loss(model_output, input_tokens, *args, **kwargs):
     weights = 1 - attributions # complement of attributions
@@ -66,8 +72,9 @@ print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
+configuration.save_pretrained('/home/badger/fineweb_l1attr_weighted_transformer_d512_n16_c1024_b32x4/checkpoint-200000')
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+model = WeightedModel(LlamaModel(configuration).float(), decoder_dim, vocab_size)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -118,7 +125,6 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-    compute_loss_func=weighted_loss
 )
 
 print (f"training model, saving to {output_dir}")

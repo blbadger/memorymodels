@@ -35,7 +35,7 @@ class WeightedModel(torch.nn.Module):
         self.model = model
         self.cel = torch.nn.CrossEntropyLoss(reduction='none')
         
-    def forward(self, input_ids, labels, attention_mask, *args, **kwargs):
+    def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
         model_output = self.model(input_ids, attention_mask).last_hidden_state
         model_output = self.lm_head(model_output)
         model_output = rearrange(model_output, 'b t e -> b e t')
@@ -43,9 +43,10 @@ class WeightedModel(torch.nn.Module):
         shifted_output = model_output[..., :-1]
         shifted_labels = labels[..., 1:]
         loss = self.cel(shifted_output, shifted_labels)
-        if 'attribution' in args:
-            weights = loss - attribution # 10 - attribution # complement of attributions
-            loss *= weights #weights[..., :-1]
+        #if 'attribution' in locals() or 'attribution' in globals():
+        weights = loss - attribution # 10 - attribution # complement of attributions
+        if self.model.training:
+            loss = weights #*=weights #weights[..., :-1]
         nonpad_tokens = torch.sum(attention_mask)
         loss = torch.sum(loss) / nonpad_tokens
         return loss, model_output
@@ -77,7 +78,7 @@ n_vocab = len(tokenizer)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-lossattr-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)

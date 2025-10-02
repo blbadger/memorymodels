@@ -28,7 +28,7 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
+encoder_dim = 512
 decoder_dim = 512
 context_length = 1024
 compression = 4
@@ -110,14 +110,14 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 32
+batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memtrans\
+output_dir = f'{checkpoint_root}/fineweb_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

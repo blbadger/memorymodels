@@ -26,18 +26,52 @@ import warnings
 from dotenv import load_dotenv
 
 warnings.filterwarnings(action='ignore')
+all_context_losses = []
 
-
-def unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
+def embedding_unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
     target = input_tokens[:, 1:]
+    mask = torch.where(target==1, 0, 1)
     target = torch.where(target==1, -100, target)
-    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
+    #model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
+    model_output = model_output[1]
+    model_output = model_output[..., 1: -1]
+    #print (target)
     loss = loss_fn(model_output, target) 
+    loss_per_sample, tokens_per_sample = torch.sum(loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
+    print (loss_per_sample, tokens_per_sample)
+    total_loss, total_tokens = 0, 0
+    for i, l in enumerate(loss_per_sample):
+        if tokens_per_sample[i] == 1023:
+            total_loss += l
+            total_tokens += 1
+    all_context_losses.append(total_loss / total_tokens)
     if reduction:
         non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
        # print (non_pad_tokens)
         loss = torch.sum(loss)/non_pad_tokens
     return loss
+
+
+def clm_unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
+    target = input_tokens[:, 1:]
+    mask = torch.where(target==1, 0, 1)
+    target = torch.where(target==1, -100, target)
+    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
+    loss = loss_fn(model_output, target) 
+    loss_per_sample, tokens_per_sample = torch.sum(loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
+    print (loss_per_sample, tokens_per_sample)
+    total_loss, total_tokens = 0, 0
+    for i, l in enumerate(loss_per_sample):
+        if tokens_per_sample[i] == 1023:
+            total_loss += l
+            total_tokens += 1
+    all_context_losses.append(total_loss / total_tokens)
+    if reduction:
+        non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
+       # print (non_pad_tokens)
+        loss = torch.sum(loss)/non_pad_tokens
+    return loss
+
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
 def test_losses():
@@ -98,10 +132,12 @@ if __name__ == '__main__':
     data_root = os.getenv('DATA_ROOT')
 
     device = 'cuda' if torch.cuda.is_available else 'cpu'
+    encoder_dim = 256
     decoder_dim = 512
     context_length = 1024
     n_layers = 16
     n_heads = 4
+    compression = 4
 
     vocab_size = 8000
     llama_config_kwargs = {
@@ -117,14 +153,18 @@ if __name__ == '__main__':
 
     # Initializing a model from the llama-7b style configuration
     model = LlamaForCausalLM(configuration).float()
-    safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_transformer_512_n16_c1024_b64_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
+    safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_transformer_512_n16_c1024_b64/checkpoint-200000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
+   
+    #encoder_model = LlamaModel(configuration)
+    #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False) 
+    #safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors', strict=True)
     model.eval()
 
     tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
 
-    use_ddp = True
+    use_ddp = False
     if not use_ddp: 
         device_id = 0   
         model = model.to(device)
@@ -153,7 +193,7 @@ if __name__ == '__main__':
     start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
     test_dataset = test_dataset.skip(start).take(end - start)
     mlflow.end_run()
-    batch_size = 64
+    batch_size = 256
     attributions = []
     ids = []
     if len(test_dataset) % batch_size == 0:
@@ -169,13 +209,13 @@ if __name__ == '__main__':
         input_ids = torch.tensor(batch['input_ids']).to(device_id)
         ids.append(batch['id'])
         with torch.no_grad():
-            outputs = model.forward(input_ids, attention_mask, labels=None)
-            loss = unreduced_loss(outputs, input_ids, reduction=False)
+            outputs = model.forward(input_ids, attention_mask) # for clm: labels=None)
+            loss = clm_unreduced_loss(outputs, input_ids, reduction=False)
             attributions.append(loss.to('cpu'))
-
+    print (all_context_losses)
     torch.distributed.barrier()
     tokenizer.pad_token = tokenizer.eos_token
     attributions_dict = {'memory_attribution': attributions, 'ids': ids}
    # print (attributions_dict)
-    attributions_dataset = Dataset.from_dict(attributions_dict)
-    attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-8k_{rank}")
+    #attributions_dataset = Dataset.from_dict(attributions_dict)
+    #attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-8k_{rank}")

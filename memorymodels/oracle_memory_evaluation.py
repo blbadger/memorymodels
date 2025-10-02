@@ -20,6 +20,7 @@ import bitsandbytes as bnb
 from bitsandbytes.nn import Linear8bitLt, Linear4bit
 import copy
 import json
+import re
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
@@ -37,79 +38,60 @@ print (device)
 
 import torch
 
-# Constants for the custom float8 format
-SIGN_BITS = 1
-EXPONENT_BITS = 4
-MANTISSA_BITS = 3
-TOTAL_BITS = SIGN_BITS + EXPONENT_BITS + MANTISSA_BITS
+@torch.no_grad()
+def insert_identity(model, module=None, temp_path='temp_model'):
+	compressed_dim = model.up.weight.shape[1]
+	print (model.up.weight.shape)
+	identity_weights = torch.eye(compressed_dim)
+	identity_transformation = nn.Linear(compressed_dim, compressed_dim, bias=False)
+	identity_transformation.weight.data = identity_weights
+	if not module:
+		model.up = nn.Sequential(identity_transformation, model.up)
+	else:
+		module = nn.Sequential(identity_transformation, module)
+	save_model(model, f'{checkpoint_root}/{temp_path}')
+	return model
 
-# The bias for the exponent field. This is for an E3M4 format.
-# A standard bias for a 3-bit exponent would be 2^(3-1) - 1 = 3.
-EXPONENT_BIAS = 2**(EXPONENT_BITS - 2) - 1
-MAX_NORMAL_EXPONENT = 2**EXPONENT_BITS - 1 - EXPONENT_BIAS
+@torch.no_grad()
+def observe_sensitivities(model, cast_to=torch.float8_e4m3fn, weights=False):
+	all_results = []
+	model_copy = copy.deepcopy(model)
+	for name, module in model.named_modules():
+		if (not isinstance(module, nn.Linear)) and (not isinstance(module, nn.Embedding)):
+			continue
+		name = re.sub(r'(\.)(\d+)(\.)', r'[\2].', name)
+		copied_module_name = str('model_copy.' + name)
+		if cast_to is not None:
+			if weights:
+				new_layer = module
+				new_layer.weight = nn.Parameter(module.weight.to(cast_to).to(torch.float32))
+			else:
+				new_layer = nn.Sequential(module, CastToDtype(cast_to), CastToDtype(torch.float32))
+			exec('model.' + name + '= new_layer')
+		else:
+			# use bitsandbytes probe with Int8() quantization
+			model = insert_identity(model, module=module)
+			quantized_model = copy.deepcopy(model)
+			temp_path='temp_model'
+			module = Linear4bit(64, 64, bias=False, temp_path=temp_path)
+			safetensors.torch.load_model(quantized_model, f'{checkpoint_root}/{temp_path}')
+			model = quantized_model.to(device) # quantization active
+		
+		#print (model)	
+		trainer = transformers.Trainer(
+			model=model.to(device),
+			train_dataset=train_dataset,
+			eval_dataset=test_dataset,
+			args=training_arguments,
+			data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+		)
+		results = trainer.evaluate()
+		print (name, results)
+		original_layer = model_copy
+		exec('model.' + name + '=' + copied_module_name)
+		all_results.append([name, results])
+	return all_results
 
-def to_custom_float8(x: torch.Tensor) -> torch.Tensor:
-    """
-    Converts a float32 tensor to a custom 8-bit format (uint8 representation).
-    Handles standard floating-point logic for subnormals, normals, and infinities.
-    """
-    assert x.dtype == torch.float32, "Input tensor must be float32"
-    
-    # Extract sign, exponent, and mantissa from the float32 tensor
-    # Using `torch.frexp` to decompose numbers into mantissa and exponent
-    mantissa, exponent = torch.frexp(x)
-    sign = (x < 0).int()
-    
-    # Handle zeros
-    is_zero = (x == 0.0)
-    
-    # Handle normals and subnormals
-    # Add bias to exponent and clamp
-    clamped_exponent = torch.clamp(exponent.int() + EXPONENT_BIAS - 1, min=0, max=2**EXPONENT_BITS - 1)
-    
-    # Normalize mantissa to the range [1, 2) for non-zero numbers
-    mantissa = torch.abs(mantissa) * 2.0
-    
-    # Quantize the mantissa by scaling and rounding
-    mantissa_bits = torch.round(mantissa * (2**MANTISSA_BITS))
-    
-    # Combine bits for the final 8-bit integer representation
-    f8_val = torch.zeros_like(x, dtype=torch.uint8)
-    f8_val |= sign.to(torch.uint8) << (EXPONENT_BITS + MANTISSA_BITS)
-    f8_val |= clamped_exponent.to(torch.uint8) << MANTISSA_BITS
-    f8_val |= (mantissa_bits.int() & (2**MANTISSA_BITS - 1)).to(torch.uint8)
-    
-    # Handle zero cases
-    f8_val[is_zero] = 0
-    
-    return f8_val
-
-def from_custom_float8(f8_val: torch.Tensor) -> torch.Tensor:
-    """
-    Converts a custom 8-bit float (uint8 representation) back to float32.
-    """
-    assert f8_val.dtype == torch.uint8, "Input tensor must be uint8"
-
-    # Unpack bits
-    sign = (f8_val >> (EXPONENT_BITS + MANTISSA_BITS)) & 1
-    exponent = (f8_val >> MANTISSA_BITS) & (2**EXPONENT_BITS - 1)
-    mantissa = f8_val & (2**MANTISSA_BITS - 1)
-    
-    # Convert bits back to float32
-    f32_tensor = torch.zeros_like(f8_val, dtype=torch.float32)
-    is_zero = (f8_val == 0)
-    
-    # For non-zero values, reconstruct the floating-point number
-    normal_values = ~is_zero
-    
-    # Normalize mantissa and add implicit leading bit
-    reconstructed_mantissa = (mantissa[normal_values].float() / (2**MANTISSA_BITS)) + 1.0
-    reconstructed_exponent = exponent[normal_values].float() - EXPONENT_BIAS
-
-    # Combine parts
-    f32_tensor[normal_values] = ((-1)**sign[normal_values]) * reconstructed_mantissa * (2**reconstructed_exponent)
-
-    return f32_tensor
 
 encoder_dim = 256
 decoder_dim = 512
@@ -120,15 +102,16 @@ n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size': encoder_dim,
-    'intermediate_size': 4*encoder_dim,
-    'num_hidden_layers': n_layers,
-    'num_attention_heads': n_heads,
-    'vocab_size': vocab_size
+	'hidden_size': encoder_dim,
+	'intermediate_size': 4*encoder_dim,
+	'num_hidden_layers': n_layers,
+	'num_attention_heads': n_heads,
+	'vocab_size': vocab_size
 }
 
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
+
 # Initializing a model from the llama-7b style configuration
 encoder_model = LlamaModel(configuration).float()
 
@@ -161,7 +144,6 @@ qconfig = QConfig(
 #)
 
 #safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
-
 #print (model.up[0].weight)
 #backend = "qnnpack"
 #model.down.qconfig = torch.quantization.get_default_qconfig(backend)
@@ -174,35 +156,36 @@ qconfig = QConfig(
 #    model=model, qconfig_spec={'lm_head'}, inplace=True
 #)
 
-
 #print ('Language modeling head weight: ', model.lm_head.weight())
 #model.down = nn.Sequential(torch.quantization.QuantStub(), model.down, torch.quantization.DeQuantStub())
 #model.down.qconfig = qconfig
 #torch.ao.quantization.prepare(model.down, inplace=True)
-#print (model.down[1].weight[0].dtype)
 #model = torch.ao.quantization.convert(model)
-#print (model.down[1].weight().element_size())
-class CastToDtype(nn.Module):
-    def __init__(self, dtype):
-        super().__init__()
-        self.dtype = dtype
 
-    def forward(self, x):
-        return x.to(self.dtype)
+class CastToDtype(nn.Module):
+	def __init__(self, dtype):
+		super().__init__()
+		self.dtype = dtype
+
+	def forward(self, x):
+		return x.to(self.dtype)
 
 class CustomDtypeCast(nn.Module):
-    def __init__(self):
-        super().__init__()
-    def forward(self, x):
-        return to_custom_float8(x)
+	def __init__(self):
+		super().__init__()
+
+	def forward(self, x):
+		return to_custom_float8(x)
 
 class CustomDtypeUpcast(nn.Module):
-    def __init__(self):
-        super().__init__()
-    def forward(self, x):
-        return from_custom_float8(x)
+	def __init__(self):
+		super().__init__()
 
-#model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+	def forward(self, x):
+		return from_custom_float8(x)
+
+# model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
 # bitsandbytes approach
@@ -225,7 +208,7 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # if you have a new dataset, map before loading from disk
@@ -265,9 +248,12 @@ trainer = transformers.Trainer(
 print ('starting eval')
 model.eval()
 print (trainer.evaluate())
+
 #print (activation['down'], activation['up[0]'])
 #fior i in range(10):
 #    print ([str(i.item()) + ',' for i in activation['down'][i][0]], ',')
 
-#with open('data.json', 'w') as f:
-#    json.dump(activation['down'], f)
+results = observe_sensitivities(model, weights=True)
+output = {'results': results}
+with open(f'{data_root}/model_sensitivities.json', 'w') as f:
+   json.dump(results, f)

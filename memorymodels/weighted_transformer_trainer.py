@@ -35,26 +35,21 @@ class WeightedModel(torch.nn.Module):
         self.model = model
         self.cel = torch.nn.CrossEntropyLoss(reduction='none')
         
-    def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
+    def forward(self, input_ids, labels, attention_mask, *args, **kwargs):
         model_output = self.model(input_ids, attention_mask).last_hidden_state
         model_output = self.lm_head(model_output)
         model_output = rearrange(model_output, 'b t e -> b e t')
 
         shifted_output = model_output[..., :-1]
         shifted_labels = labels[..., 1:]
-        weights = 1 - attribution # complement of attributions
         loss = self.cel(shifted_output, shifted_labels)
-        loss *= weights[..., :-1]
+        if 'attribution' in args:
+            weights = loss - attribution # 10 - attribution # complement of attributions
+            loss *= weights #weights[..., :-1]
         nonpad_tokens = torch.sum(attention_mask)
         loss = torch.sum(loss) / nonpad_tokens
         return loss, model_output
          
-def weighted_loss(model_output, input_tokens, *args, **kwargs):
-    weights = 1 - attributions # complement of attributions
-    cel = torch.nn.CrossEntropyLoss(weight=weights)
-    loss = cel(model_output, input_tokens)
-    return loss
-
 decoder_dim = 512
 context_length = 1024
 n_layers = 16
@@ -72,7 +67,7 @@ print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
-configuration.save_pretrained('/home/badger/fineweb_l1attr_weighted_transformer_d512_n16_c1024_b32x4/checkpoint-200000')
+#configuration.save_pretrained('/home/badger/fineweb_l1attr_weighted_transformer_d512_n16_c1024_b32x4/checkpoint-200000')
 # Initializing a model from the llama-7b style configuration
 model = WeightedModel(LlamaModel(configuration).float(), decoder_dim, vocab_size)
 
@@ -81,8 +76,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-attr-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-attr-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -95,7 +90,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_l1attr_weighted_transformer\
+output_dir = f'{checkpoint_root}/fineweb_lossattr_weighted_transformer\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -137,3 +132,5 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
+#trainer.train(output_dir + '/checkpoint-72000')
+#print (trainer.evaluate())

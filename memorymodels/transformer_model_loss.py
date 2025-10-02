@@ -29,19 +29,17 @@ warnings.filterwarnings(action='ignore')
 
 
 def unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
-    target = input_tokens[:, 1:].to('cpu')
+    target = input_tokens[:, 1:]
     target = torch.where(target==1, -100, target)
-    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1].to('cpu')
+    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target) 
-   # print (loss, target, model_output)
     if reduction:
         non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
-        print (non_pad_tokens)
+       # print (non_pad_tokens)
         loss = torch.sum(loss)/non_pad_tokens
-    print (loss)
     return loss
 
-loss_fn = None
+loss_fn = nn.CrossEntropyLoss(reduction='none')
 def test_losses():
     test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
     take_n = 32
@@ -50,22 +48,20 @@ def test_losses():
 
     print_losses = {}
     batch = test_dataset[:take_n]
-    input_ids = torch.stack([torch.tensor(l) for l in batch['input_ids']], dim=0).to('cuda')
-    attention_mask = torch.stack([torch.tensor(l) for l in batch['attention_mask']], dim=0).to('cuda')
+    input_ids = torch.stack([torch.tensor(l) for l in batch['input_ids']], dim=0).to(device_id)
+    attention_mask = torch.stack([torch.tensor(l) for l in batch['attention_mask']], dim=0).to(device_id)
     output = model.forward(input_ids, attention_mask=attention_mask, labels=input_ids)
     reshaped_output = rearrange(output.logits, 'b t e -> b e t')
 
-    global loss_fn
-    loss_fn = nn.CrossEntropyLoss(reduction='none')
     losses = loss_fn(reshaped_output[:, :, :-1], input_ids[:, 1:])
+    print (losses, torch.sum(losses * attention_mask[:, 1:]) / torch.sum(attention_mask))
+    #for i in range(take_n):
+    #    if test_dataset[i]['input_ids'][0] != 1:
+    #        print_losses[test_dataset[i]['id']] = losses[i].tolist()
 
-    for i in range(take_n):
-        if test_dataset[i]['input_ids'][0] != 1:
-            print_losses[test_dataset[i]['id']] = losses[i].tolist()
-
-    d = {'losses': print_losses}
-    with open('/home/badger/clm_losses.json', 'w') as f:
-        json.dump(d, f)
+    #d = {'losses': print_losses}
+    #with open('/home/badger/clm_losses.json', 'w') as f:
+   #     json.dump(d, f)
     	
     training_arguments = transformers.TrainingArguments(
             num_train_epochs=3,
@@ -91,7 +87,7 @@ def test_losses():
             data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
     	   compute_loss_func=unreduced_loss
     	)
-    print (trainer.evaluate())
+    #print (trainer.evaluate())
     return
 
 
@@ -128,7 +124,7 @@ if __name__ == '__main__':
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
 
-    use_ddp = False
+    use_ddp = True
     if not use_ddp: 
         device_id = 0   
         model = model.to(device)
@@ -149,7 +145,7 @@ if __name__ == '__main__':
     # if you have a new dataset, map before loading from disk
     datasets.config.IN_MEMORY_MAX_SIZE = 10e9
     train_dataset = load_from_disk(train_path, keep_in_memory=None)
-    test_dataset = load_from_disk(train_path, keep_in_memory=None)
+    test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
     n_gpus = torch.cuda.device_count()
     dataset_length = len(test_dataset)
@@ -157,7 +153,7 @@ if __name__ == '__main__':
     start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
     test_dataset = test_dataset.skip(start).take(end - start)
     mlflow.end_run()
-    batch_size = 16
+    batch_size = 64
     attributions = []
     ids = []
     if len(test_dataset) % batch_size == 0:
@@ -165,18 +161,21 @@ if __name__ == '__main__':
     else:
         batches = len(test_dataset) // (batch_size) + 1
 
-    test_losses()
+    #test_losses()
     masks = []  
     for sample_index in tqdm(range(batches)):
         batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
-        attention_mask = torch.tensor(batch['attention_mask']).to(device)
-        input_ids = torch.tensor(batch['input_ids']).to(device)
+        attention_mask = torch.tensor(batch['attention_mask']).to(device_id)
+        input_ids = torch.tensor(batch['input_ids']).to(device_id)
+        ids.append(batch['id'])
         with torch.no_grad():
             outputs = model.forward(input_ids, attention_mask, labels=None)
-            loss = unreduced_loss(outputs, input_ids.to('cpu'), reduction=True)
-            attributions.append(loss)
+            loss = unreduced_loss(outputs, input_ids, reduction=False)
+            attributions.append(loss.to('cpu'))
 
+    torch.distributed.barrier()
     tokenizer.pad_token = tokenizer.eos_token
     attributions_dict = {'memory_attribution': attributions, 'ids': ids}
+   # print (attributions_dict)
     attributions_dataset = Dataset.from_dict(attributions_dict)
-    attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-loss-lpad-8k_{rank}")
+    attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-8k_{rank}")

@@ -109,11 +109,11 @@ def debatch(example):
 	return pa.Table.from_pylist(debatched_inputs)
 
 # user-defined vals
-fineweb = False
+fineweb = True
 packed = False
 prefix = 'fineweb-edu' if fineweb else 'finemath'
-context_length = 512
-padding_side = 'right'
+context_length = 1024
+padding_side = 'left'
 pad_contraction = '-lpad' if padding_side == 'left' else ''
 train_path = f"{data_root}/{prefix}-tokenized-train-c{context_length}{pad_contraction}-8k"
 test_path = f"{data_root}/{prefix}-tokenized-test-c{context_length}{pad_contraction}-8k"

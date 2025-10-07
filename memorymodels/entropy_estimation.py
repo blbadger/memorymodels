@@ -62,7 +62,7 @@ def calculate_entropy(model, batch):
 	target = input_ids[...,1:]
 	attention_mask = torch.stack([torch.tensor(i) for i in batch['attention_mask']], dim=0).to(device_id)
 	index_losses = []
-	for i in range(token_length):
+	for i in tqdm(range(token_length)):
 		_, unshifted_output = model(input_ids, attention_mask)
 		loss = loss_fn(unshifted_output[..., 1:-1], target)
 		sample_losses = torch.sum(loss, dim=1)
@@ -74,7 +74,10 @@ def calculate_entropy(model, batch):
 		shifted_losses = torch.sum(shifted_loss, dim=1)
 		index_losses.append(sample_losses - shifted_losses)
 
-	return index_losses.reverse()
+	index_losses.reverse()
+	index_losses = rearrange(torch.stack(index_losses), 't b -> b t')
+	print (index_losses.shape)
+	return index_losses
 
 
 if __name__ == '__main__':
@@ -112,7 +115,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(128)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(8)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -120,7 +123,7 @@ if __name__ == '__main__':
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size = 128
+	batch_size = 8
 	entropies = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:
@@ -132,7 +135,7 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
-		entropies.append(calculate_entropy(model, batch) * mask[:, :-1])
+		entropies.append(calculate_entropy(model, batch) * mask.to(device_id))
 		ids.append(batch['id'])
 
 	tokenizer.pad_token = tokenizer.eos_token

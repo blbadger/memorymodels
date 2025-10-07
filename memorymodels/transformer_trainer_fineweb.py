@@ -28,7 +28,7 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 512
+encoder_dim = 256
 decoder_dim = 512
 context_length = 1024
 compression = 4
@@ -37,8 +37,8 @@ n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size':encoder_dim,
-    'intermediate_size': 4*encoder_dim,
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
@@ -103,8 +103,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k-debatched"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k-debatched"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
@@ -117,7 +117,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_transformer\
+output_dir = f'{checkpoint_root}/fineweb_fullcontext_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -161,4 +161,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-8000')
+#trainer.train(output_dir + '/checkpoint-24000')

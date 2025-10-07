@@ -91,8 +91,8 @@ def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=
 		train_text = train_text.filter(lambda x: x['token_count'] > minimum_length)
 		test_text = test_text.filter(lambda x: x['token_count'] > minimum_length)
 		
-	train_dataset = train_text.map(tokenize, batched=batch)
-	test_dataset = test_text.map(tokenize, batched=batch)
+	train_dataset = train_text.map(tokenize, batched=batch, num_proc=32)
+	test_dataset = test_text.map(tokenize, batched=batch, num_proc=32)
 	train_dataset.save_to_disk(train_path)
 	test_dataset.save_to_disk(test_path)
 	print ('Datasets saved to disk')

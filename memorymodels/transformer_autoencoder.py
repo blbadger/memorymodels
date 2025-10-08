@@ -149,7 +149,10 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
                 output = self.lm_head(x)
                 output = rearrange(output, 'b t e -> b e t')
-                loss = self.cel(output, labels)
+                if labels:
+                        loss = self.cel(output, labels)
+                else:
+                        loss = 0
                 return loss, output
 
 

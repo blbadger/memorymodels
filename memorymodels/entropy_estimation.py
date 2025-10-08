@@ -67,9 +67,7 @@ def calculate_entropy(model, batch):
 		unshifted_output = rearrange(unshifted_output, 'b t e -> b e t')
 		target = torch.where(input_ids==1, -100, input_ids)
 		loss = loss_fn(unshifted_output[..., 1:-1], target[..., 1:])
-		print (loss)
 		sample_losses = torch.sum(loss, dim=1)
-		print (sample_losses)
 		input_ids = shift_position(input_ids, batch_size, fill=1)
 		attention_mask = shift_position(attention_mask, batch_size, fill=0)
 		target = torch.where(input_ids==1, -100, input_ids)
@@ -77,8 +75,6 @@ def calculate_entropy(model, batch):
 		shifted_output = rearrange(shifted_output, 'b t e -> b e t')
 		shifted_loss = loss_fn(shifted_output[..., 1:-1], target[..., 1:])
 		shifted_losses = torch.sum(shifted_loss, dim=1)
-		print (shifted_losses)
-		print (sample_losses - shifted_losses)
 		index_losses.append(sample_losses - shifted_losses)
 
 	index_losses.reverse()
@@ -121,15 +117,16 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(8)
-
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).filter(lambda x: x['input_ids'][0] != 1, num_proc=32).take(64)
+	print (test_dataset[0]['input_ids'])
+	
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
 	device_chunk_size = int(dataset_length / n_gpus)
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size = 8
+	batch_size = 64
 	entropies = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:

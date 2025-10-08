@@ -35,10 +35,10 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 1024
-encoder_dim = 1024
+encoder_dim = 256
 decoder_dim = 1024
 n_layers = 16
-compression = 1
+compression = 4
 heads = 0
 kernel = 1
 
@@ -52,18 +52,18 @@ class modelwrap(nn.Module):
         return self.model(input_ids, *args)
 
 # mixer model initialization
-model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+#model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/retrieval/contrastive/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-70000/model.safetensors')
 
-encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
-encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
-safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
-encoder = encoder.model
-print (encoder)
-#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=8)
+#encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+#encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
+#safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
+#encoder = encoder.model
+#print (encoder)
+model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1, combination_dim='token')
 #state_dict = {
 #        "model": model.state_dict()
 #    }       
@@ -80,9 +80,9 @@ print (encoder)
 #print (model)
 
 #frozen_encoder = encoder.encoderblocks
-frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=frozen_encoder, clm_encoder=False)
-print (model)
+#frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=frozen_encoder, clm_encoder=False)
+#print (model)
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
 
@@ -97,8 +97,8 @@ print (model)
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
@@ -107,19 +107,19 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 def get_chunk(example):
 	example['input_ids'] = example['input_ids'][256:]
 	return example
-train_dataset = train_dataset.map(get_chunk, num_proc=12)
-test_dataset = test_dataset.map(get_chunk, num_proc=12)
+#train_dataset = train_dataset.map(get_chunk, num_proc=12)
+#test_dataset = test_dataset.map(get_chunk, num_proc=12)
 
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_pretrainedauto_mixer\
+output_dir = f'{checkpoint_root}/fineweb_memory_tmixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

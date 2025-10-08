@@ -50,8 +50,8 @@ llama_config_kwargs = {
 }
 loss_fn = nn.CrossEntropyLoss(reduction='none')
 
-def shift_position(input_tensor, batch_size):
-	pad = torch.zeros(batch_size, dtype=torch.long).reshape(batch_size, 1).to(device_id)
+def shift_position(input_tensor, batch_size, fill=0):
+	pad = torch.ones(batch_size, dtype=torch.long).reshape(batch_size, 1).to(device_id) * fill
 	return torch.cat((pad, input_tensor), dim=1)[:, :-1]
 
 @torch.no_grad()
@@ -67,14 +67,18 @@ def calculate_entropy(model, batch):
 		unshifted_output = rearrange(unshifted_output, 'b t e -> b e t')
 		target = torch.where(input_ids==1, -100, input_ids)
 		loss = loss_fn(unshifted_output[..., 1:-1], target[..., 1:])
+		print (loss)
 		sample_losses = torch.sum(loss, dim=1)
-		input_ids =  shift_position(input_ids, batch_size)
-		attention_mask = shift_position(attention_mask, batch_size)
+		print (sample_losses)
+		input_ids = shift_position(input_ids, batch_size, fill=1)
+		attention_mask = shift_position(attention_mask, batch_size, fill=0)
 		target = torch.where(input_ids==1, -100, input_ids)
 		_, shifted_output = model(input_ids, attention_mask=attention_mask)
 		shifted_output = rearrange(shifted_output, 'b t e -> b e t')
 		shifted_loss = loss_fn(shifted_output[..., 1:-1], target[..., 1:])
 		shifted_losses = torch.sum(shifted_loss, dim=1)
+		print (shifted_losses)
+		print (sample_losses - shifted_losses)
 		index_losses.append(sample_losses - shifted_losses)
 
 	index_losses.reverse()

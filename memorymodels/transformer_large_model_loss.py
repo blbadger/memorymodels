@@ -18,6 +18,7 @@ import torch.distributed as dist
 
 import warnings
 from dotenv import load_dotenv
+import asyncio
 
 warnings.filterwarnings(action='ignore')
 all_context_losses = []
@@ -35,43 +36,39 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
         for token, loss in zip(token_sequence, loss_sequence):
             chars = large_tokenizer.decode(token)
             for j in range(len(chars)):
+                losses_per_position[index] = loss
                 index += 1
-                losses_per_position[index] = large_token_losses[index]
         all_losses_per_position.append(losses_per_position)
     
     all_converted_losses = []
     for text, losses_per_position in zip(text, all_losses_per_position):
         small_tokens = tokenizer.encode(text)
+        if len(small_tokens) != 1025: 
+            continue
         start_index = 0
         converted_losses = []
         for token in small_tokens:
             token_chars = len(tokenizer.decode(token))
+            if token_chars == 0:
+                continue
             end_index = start_index + token_chars
             average_loss = sum([losses_per_position[i] for i in range(start_index, end_index)]) / token_chars
             start_index += token_chars
-            converted_losses.append(average_loss)
+            converted_losses.append(average_loss.item())
         all_converted_losses.append(converted_losses)
 
     loss_tensor = torch.stack([torch.tensor(i) for i in all_converted_losses], dim=0)
-    return converted_losses
+    return loss_tensor
 
-def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args, **kwargs):
-    target = input_tokens[:, 1:]
+@torch.no_grad()
+async def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args, **kwargs):
+    model_output, input_tokens = model_output, input_tokens
+    target = torch.stack([torch.tensor(i) for i in input_tokens])[:, 1:]
     mask = torch.where(target==1, 0, 1)
     target = torch.where(target==1, -100, target)
-    model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
+    model_output = rearrange(model_output, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target)
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, input_tokens, loss)
-    loss_per_sample, tokens_per_sample = torch.sum(converted_loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
-    total_loss, total_tokens = 0, 0
-    for i, l in enumerate(loss_per_sample):
-        if tokens_per_sample[i] == 1023:
-            total_loss += l
-            total_tokens += 1
-    all_context_losses.append(total_loss / total_tokens)
-    if reduction:
-        non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
-        loss = torch.sum(loss)/non_pad_tokens
     return converted_loss
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
@@ -104,7 +101,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None)
+test_dataset = load_from_disk(test_path, keep_in_memory=None)#.filter(lambda x: x['input_ids'][0] != 1)
 
 n_gpus = torch.cuda.device_count()
 dataset_length = len(test_dataset)
@@ -122,6 +119,7 @@ else:
 
 masks = []  
 for sample_index in tqdm(range(batches)):
+    print (f"Processing Sample {sample_index}")
     batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
     attention_mask = torch.tensor(batch['attention_mask']).to(device_id)
     input_ids = torch.tensor(batch['input_ids']).to(device_id)
@@ -131,13 +129,15 @@ for sample_index in tqdm(range(batches)):
     large_attention_mask = torch.where(large_input_tensor==128001, 0, 1).to(device_id)
     ids.append(batch['id'])
     with torch.no_grad():
-        outputs = model.forward(large_input_tensor, large_attention_mask) # for clm: labels=None)
-        loss = clm_unreduced_loss(outputs, input_ids, text, reduction=False)
-        attributions.append(loss.to('cpu'))
+        outputs  = model(large_input_tensor, labels=large_input_tensor, attention_mask=large_attention_mask) # for clm: labels=None)
+        loss, output = outputs.loss, outputs.logits
+        loss = clm_unreduced_loss(output, large_input_ids, text, reduction=False)
+        attributions.append(loss)
+    
 print (all_context_losses)
 torch.distributed.barrier()
 tokenizer.pad_token = tokenizer.eos_token
 attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 # print (attributions_dict)
-#attributions_dataset = Dataset.from_dict(attributions_dict)
-#attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-8k_{rank}")
+attributions_dataset = Dataset.from_dict(attributions_dict)
+attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-1bllama-8k_{rank}")

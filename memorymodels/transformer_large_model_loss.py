@@ -12,16 +12,10 @@ from datasets import load_dataset, load_from_disk, Dataset
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel, AutoModel, AutoModelForCausalLM
 import safetensors
 from safetensors.torch import save_file, save_model
-import copy
-import json
-import re
-from pprint import pprint
 from tqdm import tqdm
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
-from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ProjMemoryTransformer
 import warnings
 from dotenv import load_dotenv
 
@@ -32,25 +26,33 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
     """
     Converts loss from large tokenizer to small tokenizer via per-character averages
     """
-    losses_per_position = {}
-    index = 0
-    # losses are in [b t] shape
-    for token, loss in zip(large_tokens, large_token_losses):
-        chars = large_tokenizer.decode(token)
-        for j in range(len(chars)):
-            index += 1
-            losses_per_position[index] = large_token_losses[index]
-    
-    small_tokens = tokenizer.encode(text)
-    start_index = 0
-    converted_losses = []
-    for token in small_tokens:
-        token_chars = len(tokenizer.decode(token))
-        end_index = start_index + token_chars
-        average_loss = sum([losses_per_position[i] for i in range(start_index, end_index)]) / token_chars
-        start_index += token_chars
-        converted_losses.append(average_loss)
 
+    # losses are in [b t] shape
+    all_losses_per_position = []
+    for token_sequence, loss_sequence in zip(large_tokens, large_token_losses):
+        losses_per_position = {}
+        index = 0
+        for token, loss in zip(token_sequence, loss_sequence):
+            chars = large_tokenizer.decode(token)
+            for j in range(len(chars)):
+                index += 1
+                losses_per_position[index] = large_token_losses[index]
+        all_losses_per_position.append(losses_per_position)
+    
+    all_converted_losses = []
+    for text, losses_per_position in zip(text, all_losses_per_position):
+        small_tokens = tokenizer.encode(text)
+        start_index = 0
+        converted_losses = []
+        for token in small_tokens:
+            token_chars = len(tokenizer.decode(token))
+            end_index = start_index + token_chars
+            average_loss = sum([losses_per_position[i] for i in range(start_index, end_index)]) / token_chars
+            start_index += token_chars
+            converted_losses.append(average_loss)
+        all_converted_losses.append(converted_losses)
+
+    loss_tensor = torch.stack([torch.tensor(i) for i in all_converted_losses], dim=0)
     return converted_losses
 
 def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args, **kwargs):
@@ -60,7 +62,7 @@ def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args,
     model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target)
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, input_tokens, loss)
-    loss_per_sample, tokens_per_sample = torch.sum(loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
+    loss_per_sample, tokens_per_sample = torch.sum(converted_loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
     total_loss, total_tokens = 0, 0
     for i, l in enumerate(loss_per_sample):
         if tokens_per_sample[i] == 1023:
@@ -70,7 +72,7 @@ def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args,
     if reduction:
         non_pad_tokens = torch.sum(torch.where(target==-100, 0, 1))
         loss = torch.sum(loss)/non_pad_tokens
-    return loss
+    return converted_loss
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
 

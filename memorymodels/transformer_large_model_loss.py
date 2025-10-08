@@ -9,7 +9,7 @@ import torch.nn as nn
 import mlflow
 import datasets
 from datasets import load_dataset, load_from_disk, Dataset
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel, AutoModelForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel, AutoModel, AutoModelForCausalLM
 import safetensors
 from safetensors.torch import save_file, save_model
 import copy
@@ -34,6 +34,7 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
     """
     losses_per_position = {}
     index = 0
+    # losses are in [b t] shape
     for token, loss in zip(large_tokens, large_token_losses):
         chars = large_tokenizer.decode(token)
         for j in range(len(chars)):
@@ -52,13 +53,12 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
 
     return converted_losses
 
-def clm_unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwargs):
+def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args, **kwargs):
     target = input_tokens[:, 1:]
     mask = torch.where(target==1, 0, 1)
     target = torch.where(target==1, -100, target)
     model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target)
-    text = large_tokenizer.batch_decode(input_tokens)
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, input_tokens, loss)
     loss_per_sample, tokens_per_sample = torch.sum(loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
     total_loss, total_tokens = 0, 0
@@ -82,7 +82,6 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 large_tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 large_tokenizer.pad_token = large_tokenizer.eos_token
-
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -125,12 +124,13 @@ for sample_index in tqdm(range(batches)):
     attention_mask = torch.tensor(batch['attention_mask']).to(device_id)
     input_ids = torch.tensor(batch['input_ids']).to(device_id)
     text = tokenizer.batch_decode(input_ids)
-    large_input_ids = large_tokenizer(text)
-    print (large_input_ids)
+    large_input_ids = large_tokenizer(text, padding='max_length', max_length=1024)['input_ids']
+    large_input_tensor = torch.stack([torch.tensor(s) for s in large_input_ids], dim=0).to(device_id)
+    large_attention_mask = torch.where(large_input_tensor==128001, 0, 1).to(device_id)
     ids.append(batch['id'])
     with torch.no_grad():
-        outputs = model.forward(large_input_ids, attention_mask) # for clm: labels=None)
-        loss = clm_unreduced_loss(outputs, input_ids, reduction=False)
+        outputs = model.forward(large_input_tensor, large_attention_mask) # for clm: labels=None)
+        loss = clm_unreduced_loss(outputs, input_ids, text, reduction=False)
         attributions.append(loss.to('cpu'))
 print (all_context_losses)
 torch.distributed.barrier()

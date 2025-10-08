@@ -59,24 +59,26 @@ def calculate_entropy(model, batch):
 	input_ids = torch.stack([torch.tensor(i) for i in batch['input_ids']], dim=0).to(device_id)
 	token_length = input_ids.shape[1] # presuming [b, t]
 	batch_size = input_ids.shape[0]
-	target = input_ids[...,1:]
 	attention_mask = torch.stack([torch.tensor(i) for i in batch['attention_mask']], dim=0).to(device_id)
 	index_losses = []
+	# iterate through tokens, computing loss in the reverse dim
 	for i in tqdm(range(token_length)):
-		_, unshifted_output = model(input_ids, attention_mask)
-		loss = loss_fn(unshifted_output[..., 1:-1], target)
+		_, unshifted_output = model(input_ids, attention_mask=attention_mask)
+		unshifted_output = rearrange(unshifted_output, 'b t e -> b e t')
+		target = torch.where(input_ids==1, -100, input_ids)
+		loss = loss_fn(unshifted_output[..., 1:-1], target[..., 1:])
 		sample_losses = torch.sum(loss, dim=1)
 		input_ids =  shift_position(input_ids, batch_size)
 		attention_mask = shift_position(attention_mask, batch_size)
-		target = input_ids[..., 1:]
-		_, shifted_output = model(input_ids, attention_mask)
-		shifted_loss = loss_fn(shifted_output[..., 1:-1], target)
+		target = torch.where(input_ids==1, -100, input_ids)
+		_, shifted_output = model(input_ids, attention_mask=attention_mask)
+		shifted_output = rearrange(shifted_output, 'b t e -> b e t')
+		shifted_loss = loss_fn(shifted_output[..., 1:-1], target[..., 1:])
 		shifted_losses = torch.sum(shifted_loss, dim=1)
 		index_losses.append(sample_losses - shifted_losses)
 
 	index_losses.reverse()
 	index_losses = rearrange(torch.stack(index_losses), 't b -> b t')
-	print (index_losses.shape)
 	return index_losses
 
 

@@ -69,6 +69,7 @@ async def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, 
     model_output = rearrange(model_output, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target)
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, input_tokens, loss)
+    del model_output; torch.cuda.empty_cache()
     return converted_loss
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
@@ -84,7 +85,7 @@ large_tokenizer.pad_token = large_tokenizer.eos_token
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
-use_ddp = False
+use_ddp = True
 if not use_ddp: 
     device_id = 0   
     model = model.to(device)
@@ -109,7 +110,7 @@ device_chunk_size = int(dataset_length / n_gpus)
 start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 test_dataset = test_dataset.skip(start).take(end - start)
 mlflow.end_run()
-batch_size = 16
+batch_size = 8
 attributions = []
 ids = []
 if len(test_dataset) % batch_size == 0:
@@ -130,8 +131,8 @@ for sample_index in tqdm(range(batches)):
     ids.append(batch['id'])
     with torch.no_grad():
         outputs  = model(large_input_tensor, labels=large_input_tensor, attention_mask=large_attention_mask) # for clm: labels=None)
-        loss, output = outputs.loss, outputs.logits
-        loss = clm_unreduced_loss(output, large_input_ids, text, reduction=False)
+        loss, output = outputs.loss, outputs.logits.to(torch.float8_e5m2)
+        loss = clm_unreduced_loss(output.to('cpu'), large_input_ids, text, reduction=False)
         attributions.append(loss)
     
 print (all_context_losses)

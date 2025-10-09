@@ -24,7 +24,7 @@ import asyncio
 warnings.filterwarnings(action='ignore')
 all_context_losses = []
 
-def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses):
+def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses, small_tokens):
     """
     Converts loss from large tokenizer to small tokenizer via per-character averages
     """
@@ -34,47 +34,46 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
     for token_sequence, loss_sequence, text_sequence in zip(large_tokens, large_token_losses, text):
         losses_per_position = {}
         index = 0
-        for token, loss in zip(token_sequence, loss_sequence):
-            if token in [128001, 128001]:
+        all_chars = ''
+        for token, loss in zip(token_sequence[:-1], loss_sequence):
+            if token in [128000, 128001]:
                 continue
             chars = large_tokenizer.decode(token)
+            all_chars += chars
             for j in range(len(chars)):
                 losses_per_position[index] = loss
                 index += 1
         all_losses_per_position.append(losses_per_position)
-    
     all_converted_losses = []
-    for text, losses_per_position in zip(text, all_losses_per_position):
-        small_tokens = tokenizer.encode(text, padding='max_length', max_length=1024)
-        if len(small_tokens) != 1025:
-            continue
+    for text_sequence, losses_per_position, small_token_sequence in zip(text, all_losses_per_position, small_tokens):
         start_index = 0
         converted_losses = []
-        for token in small_tokens:
-            if token == 1 or token == 128000:
+        for token in small_token_sequence:
+            if token == 1 or token == 128000 or token == 128001:
                 continue
             token_chars = len(tokenizer.decode(token))
             if token_chars == 0:
                 continue
             end_index = start_index + token_chars
-            average_loss = sum([losses_per_position[i] for i in range(start_index, end_index)]) / token_chars
+            char_losses = [(losses_per_position[i] if i in losses_per_position else 0) for i in range(start_index, end_index)]
+            average_loss = sum(char_losses) / len(char_losses)
             start_index += token_chars
-            converted_losses.append(average_loss.item())
+            converted_losses.append(float(average_loss))
         all_converted_losses.append(converted_losses)
 
     loss_tensor = torch.stack([torch.tensor(i) for i in all_converted_losses], dim=0)
     return loss_tensor
 
 @torch.no_grad()
-def clm_unreduced_loss(model_output, input_tokens, text, reduction=False, *args, **kwargs):
-    model_output, input_tokens = model_output, input_tokens
-    target = torch.stack([torch.tensor(i) for i in input_tokens])[:, 1:]
+def clm_unreduced_loss(model_output, large_tokens, text, small_tokens, reduction=False, *args, **kwargs):
+    target = torch.stack([torch.tensor(i) for i in large_tokens])[:, 1:]
     mask = torch.where(target==1, 0, 1)
     target = torch.where(target==1, -100, target)
-    model_output = rearrange(model_output, 'b t e -> b e t')[..., :-1]
-    loss = loss_fn(model_output, target)
+    model_output = rearrange(model_output, 'b t e -> b e t')
+    shifted_model_output = model_output[..., :-1]
+    loss = loss_fn(shifted_model_output, target)
     print (torch.mean(loss))
-    converted_loss = convert_loss(text, tokenizer, large_tokenizer, input_tokens, loss)
+    converted_loss = convert_loss(text, tokenizer, large_tokenizer, large_tokens, loss, small_tokens)
     return converted_loss
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
@@ -107,7 +106,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None).filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(16)
+test_dataset = load_from_disk(test_path, keep_in_memory=None).filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(64)
 
 n_gpus = torch.cuda.device_count()
 dataset_length = len(test_dataset)
@@ -115,7 +114,7 @@ device_chunk_size = int(dataset_length / n_gpus)
 start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 test_dataset = test_dataset.skip(start).take(end - start)
 mlflow.end_run()
-batch_size = 32
+batch_size = 64
 attributions = []
 ids = []
 if len(test_dataset) % batch_size == 0:
@@ -131,14 +130,13 @@ for sample_index in tqdm(range(batches)):
     text = tokenizer.batch_decode(input_ids)
     large_input_ids = large_tokenizer(text, padding='max_length', max_length=1024)['input_ids']
     large_input_tensor = torch.stack([torch.tensor(s) for s in large_input_ids], dim=0).to(device_id)
-    print (large_input_tensor)
     large_attention_mask = torch.where(large_input_tensor==128001, 0, 1).to(device_id)
     ids.append(batch['id'])
     with torch.no_grad():
         outputs = model(large_input_tensor, labels=large_input_tensor, attention_mask=large_attention_mask) # for clm: labels=None)
         reduced_loss, output = outputs.loss, outputs.logits.to(torch.float16)
         print (reduced_loss)
-        loss = clm_unreduced_loss(output.to('cpu'), large_input_ids, text, reduction=False)
+        loss = clm_unreduced_loss(output.to('cpu'), large_input_ids, text, input_ids, reduction=False)
         attributions.append(loss)
 
     if use_ddp:

@@ -24,7 +24,7 @@ import asyncio
 warnings.filterwarnings(action='ignore')
 all_context_losses = []
 
-def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses, small_tokens):
+async def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses, small_tokens):
     """
     Converts loss from large tokenizer to small tokenizer via per-character averages
     """
@@ -59,6 +59,8 @@ def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_los
             average_loss = sum(char_losses) / len(char_losses)
             start_index += token_chars
             converted_losses.append(float(average_loss))
+        pad_size = 1024 - len(converted_losses)
+        converted_losses = [0]*pad_size + converted_losses
         all_converted_losses.append(converted_losses)
 
     loss_tensor = torch.stack([torch.tensor(i) for i in all_converted_losses], dim=0)
@@ -71,8 +73,8 @@ def clm_unreduced_loss(model_output, large_tokens, text, small_tokens, reduction
     target = torch.where(target==1, -100, target)
     model_output = rearrange(model_output, 'b t e -> b e t')
     shifted_model_output = model_output[..., :-1]
-    loss = loss_fn(shifted_model_output, target)
-    print (torch.mean(loss))
+    loss = loss_fn(shifted_model_output, target.to(device_id)).to('cpu')
+    #print (torch.mean(loss))
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, large_tokens, loss, small_tokens)
     return converted_loss
 
@@ -89,7 +91,7 @@ large_tokenizer.pad_token = large_tokenizer.eos_token
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
-use_ddp = False
+use_ddp = True
 if not use_ddp: 
     device_id = 0   
     model = model.to(device)
@@ -106,7 +108,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None).filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(64)
+test_dataset = load_from_disk(train_path, keep_in_memory=None).take(1500000)#.filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(64)
 
 n_gpus = torch.cuda.device_count()
 dataset_length = len(test_dataset)
@@ -114,7 +116,7 @@ device_chunk_size = int(dataset_length / n_gpus)
 start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 test_dataset = test_dataset.skip(start).take(end - start)
 mlflow.end_run()
-batch_size = 64
+batch_size = 32
 attributions = []
 ids = []
 if len(test_dataset) % batch_size == 0:
@@ -135,8 +137,8 @@ for sample_index in tqdm(range(batches)):
     with torch.no_grad():
         outputs = model(large_input_tensor, labels=large_input_tensor, attention_mask=large_attention_mask) # for clm: labels=None)
         reduced_loss, output = outputs.loss, outputs.logits.to(torch.float16)
-        print (reduced_loss)
-        loss = clm_unreduced_loss(output.to('cpu'), large_input_ids, text, input_ids, reduction=False)
+        #print (reduced_loss)
+        loss = clm_unreduced_loss(output, large_input_ids, text, input_ids, reduction=False)
         attributions.append(loss)
 
     if use_ddp:
@@ -144,14 +146,15 @@ for sample_index in tqdm(range(batches)):
     tokenizer.pad_token = tokenizer.eos_token
     attributions_dict = {'memory_attribution': attributions, 'ids': ids}
 
-print_attributions = {}
-for i, attribution in enumerate(attributions[0]):
-    if test_dataset[i]['input_ids'][0] != 1:
-        print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
+#print_attributions = {}
+#for i, attribution in enumerate(attributions[0]):
+#    if test_dataset[i]['input_ids'][0] != 1:
+#        print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
     
-d = {'losses': print_attributions}
-with open('/home/azureuser/big_loss_attributions.json', 'w') as f:
-    json.dump(d, f)
+#d = {'losses': print_attributions}
+#with open('/home/azureuser/big_loss_attributions.json', 'w') as f:
+#    json.dump(d, f)
 # print (attributions_dict)
-#attributions_dataset = Dataset.from_dict(attributions_dict)
-#attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-1bllama-8k_{rank}")
+
+attributions_dataset = Dataset.from_dict(attributions_dict)
+attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-lpad-1bllama-8k_{rank}")

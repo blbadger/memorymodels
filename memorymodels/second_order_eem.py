@@ -28,30 +28,19 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-class WeightedModel(torch.nn.Module):
-    def __init__(self, model, hidden_dim, tokenizer_size, use_weights=True):
+class EEModel(torch.nn.Module):
+    def __init__(self, model, hidden_dim):
         super().__init__()
-        self.lm_head = torch.nn.Linear(hidden_dim, tokenizer_size)
+        self.eem_head = torch.nn.Linear(hidden_dim, 1)
         self.model = model
-        self.cel = torch.nn.CrossEntropyLoss(reduction='none')
-        self.use_weights = use_weights
-        
-    def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
-        model_output = self.model(input_ids, attention_mask).last_hidden_state
-        model_output = self.lm_head(model_output)
-        model_output = rearrange(model_output, 'b t e -> b e t')
+        self.loss = torch.nn.MSELoss()
 
-        shifted_output = model_output[..., :-1]
-        shifted_labels = labels[..., 1:]
-        loss = self.cel(shifted_output, shifted_labels)
-        #if 'attribution' in locals() or 'attribution' in globals():
-        weights = torch.abs(loss - attribution) # 10 - attribution # complement of attributions
-        if self.model.training and self.use_weights:
-            loss = weights*2.5 #*=weights #weights[..., :-1]
-        nonpad_tokens = torch.sum(attention_mask)
-        loss = torch.sum(loss) / nonpad_tokens
-        return loss, model_output
-         
+    def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
+        self.model(input_ids, attention_mask).last_hidden_state
+        estimations = self.eem_head(model_output)
+        loss = self.loss_fn(estimations, attribution)
+        return loss, estimations 
+ 
 decoder_dim = 512
 context_length = 1024
 n_layers = 16
@@ -64,15 +53,13 @@ llama_config_kwargs = {
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size,
-    'attention_dropout': 0.1
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
-#configuration.save_pretrained('/home/badger/fineweb_l1attr_weighted_transformer_d512_n16_c1024_b32x4/checkpoint-200000')
 # Initializing a model from the llama-7b style configuration
-model = WeightedModel(LlamaModel(configuration).float(), decoder_dim, vocab_size, use_weights=True)
+model = EEModel(LlamaModel(configuration).float(), decoder_dim)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -83,7 +70,7 @@ train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-lossattr-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(50000)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
 batch_size = 32
@@ -93,7 +80,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_dropout_50k\
+output_dir = f'{checkpoint_root}/fineweb_eem_\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -105,8 +92,8 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=batch_size,
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
-	eval_steps=500,
-	save_steps=4000,
+	eval_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=False,
 	bf16=True, 

@@ -63,7 +63,9 @@ class modelwrap(nn.Module):
 #safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
 #encoder = encoder.model
 #print (encoder)
-model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1, combination_dim='token')
+#model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1, combination_dim='token')
+model = ProjMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1)
+
 #state_dict = {
 #        "model": model.state_dict()
 #    }       
@@ -119,7 +121,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memory_tmixer\
+output_dir = f'{checkpoint_root}/fineweb_memory_pmixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -135,8 +137,8 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=8000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
-	fp16=True,
-	bf16=False,
+	fp16=False,
+	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
@@ -165,6 +167,6 @@ print (f'training begun: saving checkpoints in {output_dir}')
 # for overwriting training args
 #torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
 
-trainer.train()
-#trainer.train(output_dir + '/checkpoint-32000')
+#trainer.train()
+trainer.train(output_dir + '/checkpoint-104000')
 # trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')

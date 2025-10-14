@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
+from hamming_metric import hamming_metric
 
 warnings.filterwarnings(action='ignore')
 
@@ -28,11 +29,11 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
-decoder_dim = 512
-context_length = 1024
-compression = 4
-n_layers = 16
+encoder_dim = 1024
+decoder_dim = 1024
+context_length = 512
+compression = 1
+n_layers = 8
 n_heads = 4
 
 vocab_size = 8000
@@ -48,7 +49,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -61,34 +62,33 @@ model = LlamaForCausalLM(configuration).float()
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # embedding-augmented oracle memory model 
-#encoder_model = LlamaModel(configuration)
-#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
+encoder_model = LlamaModel(configuration)
+encoder_model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
 
 # unrolled embedding transformer autoencoder
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
-
-#safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
-
-#llama_config_kwargs = { 
-#    'hidden_size':decoder_dim//2,
-#    'intermediate_size': 4*decoder_dim//2,
-#    'num_hidden_layers': n_layers,
-#    'num_attention_heads': 4,
-#    'vocab_size': vocab_size
-#}
-
-#decoder_configuration = LlamaConfig(**llama_config_kwargs)
-#encoder_model = AbbreviatedModel(encoder_model.encoder, tokenized_length=context_length)
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+
+safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+
+llama_config_kwargs = { 
+    'hidden_size':decoder_dim//2,
+    'intermediate_size': 4*decoder_dim//2,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': 4,
+    'vocab_size': vocab_size
+}
+
+decoder_configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = AbbreviatedModel(encoder_model.encoder, tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
 
 print (model)
 # embedding-augmented oracle memory model 
 #encoder_model = LlamaModel(configuration)
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads)
-#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder)
 
 # Memory transformer
 #encoder_model = LlamaModel(configuration)
@@ -102,30 +102,21 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k-debatched"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k-debatched"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-<<<<<<< HEAD
-batch_size = 16
-=======
 batch_size = 64
->>>>>>> b6dc15a (minor updates)
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-<<<<<<< HEAD
-output_dir = f'{checkpoint_root}/fineweb_fullcontext_transformer\
-=======
-output_dir = f'{checkpoint_root}/fineweb_transformer\
->>>>>>> b6dc15a (minor updates)
+output_dir = f'{checkpoint_root}/fineweb_frozen_transmemory_autoencoder_h4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -148,7 +139,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=400000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
@@ -157,16 +148,8 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	compute_loss_func=hamming_metric
 )
 
-print (f"training model, saving to {output_dir}")
-# save driver code snapshot in checkpoint dir
-code_path = os.path.abspath(__file__)
-if not os.path.isdir(output_dir):
-	os.mkdir(output_dir)
-shutil.copy(code_path, output_dir)
-
-print (f"training begun: saving results in {output_dir}")
-model.train()
-trainer.train()
-#trainer.train(output_dir + '/checkpoint-24000')
+safetensors.torch.load_model(model, '/home/azureuser/information_extraction/fineweb_frozen_transmemory_autoencoder_h4_1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
+print (trainer.evaluate())

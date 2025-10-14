@@ -33,11 +33,11 @@ checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
-encoder_dim = 256
-decoder_dim = 512
+encoder_dim = 1024
+decoder_dim = 1024
 context_length = 1024
-compression = 4
-n_layers = 16
+compression = 1
+n_layers = 8
 n_heads = 4
 
 vocab_size = 8000
@@ -108,7 +108,6 @@ class AttributableMemoryTransformer(MemoryTransformer):
 			shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous() 
 		loss = self.cel(shift_logits, shift_labels)
-
 		return loss, output, decoder_input_embeds
 
 def compute_grad(model, input_ids, attention_mask, token_index):
@@ -130,7 +129,7 @@ def gradientxinput(model, input_ids, output_measure='l1'):
 	#loss, output, decoder_input_embeds = model.forward(input_ids, attention_mask, occlude_memory=False)
 	#print (loss.shape, output.shape)
 	memory_gradxinputs = []
-	for token_index in tqdm(range(1, len(input_ids[0]))):
+	for token_index in tqdm(range(1, len(input_ids[0])+1)):
 		memory_grad, decoder_input_embeds = compute_grad(model, input_ids, attention_mask, token_index)
 		gxo = memory_grad * decoder_input_embeds[:, 0, :]
 		memory_gradxinputs.append(torch.sum(torch.abs(gxo), dim=1).to('cpu'))
@@ -212,11 +211,17 @@ if __name__ == '__main__':
 	#encoder_model = LlamaModel(configuration)
 	model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 
+<<<<<<< HEAD
 	#model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
 	#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
 	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
 	#model.cel = nn.CrossEntropyLoss(reduction='none')
 	model.eval()
+=======
+	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
+	safetensors.torch.load_model(model, f'{checkpoint_root}/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
+
+>>>>>>> b6dc15a (minor updates)
 	use_ddp = False
 	if not use_ddp:	
 		device_id = 0	
@@ -232,13 +237,17 @@ if __name__ == '__main__':
 	tokenizer.pad_token = tokenizer.eos_token
 	n_vocab = len(tokenizer)
 
-	train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-	test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
+<<<<<<< HEAD
 	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(8132)
+=======
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(32)
+>>>>>>> b6dc15a (minor updates)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -286,7 +295,11 @@ if __name__ == '__main__':
 	for sample_index in tqdm(range(batches)):
 		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
 		mask = torch.tensor(batch['attention_mask'])
+<<<<<<< HEAD
 		attributions.append(memory_occlusion(model, batch, output_measure='loss') * mask[:, :-1])
+=======
+		attributions.append(memory_occlusion(model, batch, output_measure='l1') * mask)
+>>>>>>> b6dc15a (minor updates)
 		#attributions.append(memory_shift(model, batch, output_measure='l1') * mask)
 		#attributions.append(gradientxinput(model, batch, output_measure='l1') * mask)
 		ids.append(batch['id'])
@@ -299,7 +312,11 @@ if __name__ == '__main__':
 			print (torch.mean(attribution), attribution)
 			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
 	d = {'attributions': print_attributions}
+<<<<<<< HEAD
 	with open('/home/badger/loss_attributions.json', 'w') as f:
+=======
+	with open('/home/azureuser/largest_l1_attributions.json', 'w') as f:
+>>>>>>> b6dc15a (minor updates)
 		json.dump(d, f)
 	
 	attributions_dict = {'attribution': attributions, 'ids': ids}

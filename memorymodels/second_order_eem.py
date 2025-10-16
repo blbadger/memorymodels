@@ -33,12 +33,12 @@ class EEModel(torch.nn.Module):
         super().__init__()
         self.eem_head = torch.nn.Linear(hidden_dim, 1)
         self.model = model
-        self.loss = torch.nn.MSELoss()
+        self.loss_fn = torch.nn.MSELoss()
 
     def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
-        self.model(input_ids, attention_mask).last_hidden_state
-        estimations = self.eem_head(model_output)
-        loss = self.loss_fn(estimations, attribution)
+        model_output = self.model(input_ids, attention_mask).last_hidden_state
+        estimations = self.eem_head(model_output).squeeze(-1)
+        loss = self.loss_fn(estimations[..., 1:], attribution)
         return loss, estimations 
  
 decoder_dim = 512
@@ -80,7 +80,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_eem_\
+output_dir = f'{checkpoint_root}/fineweb_2eem\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'

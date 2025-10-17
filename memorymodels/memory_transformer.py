@@ -270,8 +270,9 @@ class MemoryTransformer(nn.Module):
 		# feed pre-concatenated input embeddings to the transformer decoder
 		x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 		output = self.lm_head(x.last_hidden_state)
-		if labels is not None and labels.dim() > 2:
-			labels = rearrange(labels, 'b p t -> b (p t)')
+		if labels is not None:
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
 			shift_labels, shift_logits = labels, output
 			if self.combination_dim == 'token':

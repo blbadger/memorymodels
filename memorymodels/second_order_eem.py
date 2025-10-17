@@ -29,16 +29,20 @@ data_root = os.getenv('DATA_ROOT')
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 class EEModel(torch.nn.Module):
-    def __init__(self, model, hidden_dim):
+    def __init__(self, model, hidden_dim, no_shift=True):
         super().__init__()
         self.eem_head = torch.nn.Linear(hidden_dim, 1)
         self.model = model
         self.loss_fn = torch.nn.MSELoss()
+        self.no_shift=no_shift
 
     def forward(self, input_ids, labels, attention_mask, attribution, *args, **kwargs):
         model_output = self.model(input_ids, attention_mask).last_hidden_state
         estimations = self.eem_head(model_output).squeeze(-1)
-        loss = self.loss_fn(estimations[..., 1:], attribution)
+        if self.no_shift:
+            loss = self.loss_fn(estimations[..., 1:], attribution)
+        else:
+            loss = self.loss_fn(estimations[..., :-1], attribution)
         return loss, estimations 
  
 decoder_dim = 512
@@ -59,7 +63,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = EEModel(LlamaModel(configuration).float(), decoder_dim)
+model = EEModel(LlamaModel(configuration).float(), decoder_dim, no_shift=False)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -80,7 +84,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_2eem\
+output_dir = f'{checkpoint_root}/fineweb_2eem_shifted\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'

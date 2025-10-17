@@ -64,7 +64,6 @@ llama_config_kwargs = {
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size,
-    'attention_dropout': 0.1
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
@@ -96,7 +95,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_dropout_50k\
+output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_50k\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'

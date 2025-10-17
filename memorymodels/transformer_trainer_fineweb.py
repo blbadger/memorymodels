@@ -37,8 +37,8 @@ n_heads = 4
 
 vocab_size = 8000
 llama_config_kwargs = {
-    'hidden_size':decoder_dim,
-    'intermediate_size': 4*decoder_dim,
+    'hidden_size':encoder_dim,
+    'intermediate_size': 4*encoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size
@@ -48,7 +48,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -61,13 +61,13 @@ model = LlamaForCausalLM(configuration).float()
 #model = AutoencodingTransformerMod(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
 
 # embedding-augmented oracle memory model 
-#encoder_model = LlamaModel(configuration)
-#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
+encoder_model = LlamaModel(configuration)
+model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
 
 # unrolled embedding transformer autoencoder
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
@@ -103,29 +103,21 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k-debatched"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k-debatched"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path)
+train_dataset = load_from_disk(train_path).take(50000)
 test_dataset = load_from_disk(test_path)
 
-<<<<<<< HEAD
 batch_size = 16
-=======
-batch_size = 64
->>>>>>> b6dc15a (minor updates)
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-<<<<<<< HEAD
-output_dir = f'{checkpoint_root}/fineweb_fullcontext_transformer\
-=======
-output_dir = f'{checkpoint_root}/fineweb_transformer\
->>>>>>> b6dc15a (minor updates)
+output_dir = f'{checkpoint_root}/fineweb_unweighted_eem_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -139,8 +131,8 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=batch_size,
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=8000,
+	eval_steps=500,
+	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=False,
 	bf16=True, 
@@ -148,7 +140,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=400000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(

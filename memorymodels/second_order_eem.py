@@ -82,11 +82,11 @@ test_dataset = load_from_disk(test_path)
 batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
-if torch.cuda.is_available():
-    n_devices = torch.cuda.device_count()
+#if torch.cuda.is_available():
+#    n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_2eem_shifted\
+output_dir = f'{checkpoint_root}/fineweb_2eem\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -127,42 +127,42 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+#trainer.train()
 trainer.train(output_dir + '/checkpoint-200000')
 #print (trainer.evaluate())
 
-def save_estimates(batch_size = 128):
+def save_estimates(test_dataset, batch_size = 128):
 	if len(test_dataset) % batch_size == 0:
 		batches = len(test_dataset) // batch_size
 	else:
 		batches = len(test_dataset) // (batch_size) + 1
 	
 	start, end = 0, batch_size
-	test_dataset = test_dataset.take(end - start)
+	batch = test_dataset[:batch_size]
 	mlflow.end_run()
 	attributions = []
 	ids = []
 	masks = []  
-	for sample_index in tqdm(range(batches)):
-		batch = test_dataset[sample_index*batch_size:sample_index*batch_size + batch_size]
-		attention_mask = torch.tensor(batch['attention_mask']).to(device)
-		input_ids = torch.tensor(batch['input_ids']).to(device)
-		ids.append(batch['id'])
-		with torch.no_grad():
-			outputs, _ = model.forward(input_ids, attention_mask) # for clm: labels=None)
-			attributions.append(outputs.to('cpu'))
-
+	attention_mask = torch.tensor(batch['attention_mask']).to(device)
+	input_ids = torch.tensor(batch['input_ids']).to(torch.long).to(device)
+	attribution = torch.tensor(batch['attribution']).to(device)
+	ids.append(batch['id'])
+	with torch.no_grad():
+		loss, outputs = model.forward(input_ids, input_ids, attention_mask=attention_mask, attribution=attribution) # for clm: labels=None)
+		print (loss)
+		attributions.append(outputs.to('cpu'))
 	attributions_dict = {'memory_attribution': attributions, 'ids': ids}
-	print_attributions = []
+	print_attributions = {}
 	for i, attribution in enumerate(attributions[0]):
 		if test_dataset[i]['input_ids'][0] != 1:
 			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
 
 	d = {'losses': print_attributions}
-	with open('/home/azureuser/second_order_loss.json', 'w') as f:
+	with open('/home/badger/second_order_loss.json', 'w') as f:
 		json.dump(d, f)
 		print (attributions_dict)
 	return
-    
-save_estimates()
+
+save_estimates(test_dataset) 
+#save_estimates(test_dataset.filter(lambda x: x['input_ids'][0] != 1, num_proc=16))
       

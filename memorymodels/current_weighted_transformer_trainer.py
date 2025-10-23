@@ -64,7 +64,6 @@ llama_config_kwargs = {
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size,
-    'attention_dropout': 0.1
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
@@ -86,7 +85,7 @@ train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-lossattr-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(50000)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
 batch_size = 32
@@ -96,7 +95,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_dropout_50k\
+output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_rmsprop\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -108,14 +107,14 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=batch_size,
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
-	eval_steps=500,
-	save_steps=4000,
+	eval_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=False,
 	bf16=True, 
 	eval_strategy='steps',
 	output_dir=output_dir,
-	optim='adamw_torch',
+	optim='rmsprop',
 	overwrite_output_dir=True,
 	max_steps=200000
 )
@@ -137,6 +136,6 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-#trainer.train()
-trainer.train(output_dir + '/checkpoint-132000')
+trainer.train()
+#trainer.train(output_dir + '/checkpoint-12000')
 #print (trainer.evaluate())

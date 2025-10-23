@@ -115,13 +115,10 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 encoder_model = LlamaModel(configuration).float()
 
-#encoder_model = LlamaModel(configuration)
+encoder_model = LlamaModel(configuration)
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
-<<<<<<< HEAD
-safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors')
-=======
-#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
->>>>>>> c1e2e3ace26a9b37b1276c17ee4e77b7d6aa8068
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors')
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
 print (model)
 #model = insert_identity(model)
 
@@ -143,12 +140,6 @@ print (model)
 #quantize_dynamic(
 #    model=model, qconfig_spec={'lm_head'}, inplace=True
 #)
-
-#print ('Language modeling head weight: ', model.lm_head.weight())
-#model.down = nn.Sequential(torch.quantization.QuantStub(), model.down, torch.quantization.DeQuantStub())
-#model.down.qconfig = qconfig
-#torch.ao.quantization.prepare(model.down, inplace=True)
-#model = torch.ao.quantization.convert(model)
 
 class CastToDtype(nn.Module):
 	def __init__(self, dtype):
@@ -174,7 +165,7 @@ class CustomDtypeUpcast(nn.Module):
 
 #model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e4m3fn), CastToDtype(torch.float32))
 
-#model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
+#model.down = nn.Sequential(model.down, CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32)) 
 
 # bitsandbytes approach
 #quantized_model = copy.deepcopy(model)
@@ -203,7 +194,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(test_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None).take(4096)
+test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
 print (test_dataset[0])
 # filter left-padded inputs from test dataset
@@ -242,7 +233,7 @@ print (trainer.evaluate())
 #for i in range(10):
 #    print ([float(v) for v in activation['up[0]'][i][0]], ',')
 
-results = observe_sensitivities(model, weights=True)
-output = {'results': results}
-with open(f'{data_root}/model_sensitivities.json', 'w') as f:
-   json.dump(results, f)
+#results = observe_sensitivities(model, weights=True)
+#output = {'results': results}
+#with open(f'{data_root}/model_sensitivities.json', 'w') as f:
+#   json.dump(results, f)

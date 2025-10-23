@@ -34,11 +34,11 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 1024
-encoder_dim = 256
+tokenized_length = 512
+encoder_dim = 1024
 decoder_dim = 1024
-n_layers = 16
-compression = 4
+n_layers = 8
+compression = 1
 heads = 0
 kernel = 16
 
@@ -61,7 +61,7 @@ class modelwrap(nn.Module):
 #encoder = encoder.model
 #print (encoder)
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1, combination_dim='token')
-model = ProjMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1)
+#model = ProjMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=1)
 #state_dict = {
 #        "model": model.state_dict()
 #    }       
@@ -80,7 +80,7 @@ model = ProjMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_l
 #frozen_encoder = encoder.encoderblocks
 #frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
 
-#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
+model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
 
@@ -95,8 +95,8 @@ model = ProjMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_l
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
@@ -110,14 +110,14 @@ def get_chunk(example):
 
 mlflow.end_run()
 
-batch_size = 16
+batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memory_pmixer\
+output_dir = f'{checkpoint_root}/fineweb_mixer_autounroll_nonmiddleout\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -163,6 +163,6 @@ print (f'training begun: saving checkpoints in {output_dir}')
 # for overwriting training args
 #torch.save(training_arguments, '/home/badger/fineweb_recurrent_mixer_k8_512c1_d1024_n16_c256_b64x2/checkpoint-104000/training_args.bin')
 
-#trainer.train()
-trainer.train(output_dir + '/checkpoint-104000')
+trainer.train()
+#trainer.train(output_dir + '/checkpoint-104000')
 # trainer.train('/home/azureuser/finemath_nomemory_mixer_c512x4_512c1_d1024_n16_c512_b32x2/checkpoint-80000')

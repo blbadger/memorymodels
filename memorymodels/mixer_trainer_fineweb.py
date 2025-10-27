@@ -35,12 +35,12 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-encoder_dim = 1024
-decoder_dim = 1024
+encoder_dim = 512
+decoder_dim = 512
 n_layers = 8
 compression = 1
 heads = 0
-kernel = 16
+kernel = 4
 
 class modelwrap(nn.Module):
 

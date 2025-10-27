@@ -28,11 +28,11 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
+encoder_dim = 512
 decoder_dim = 512
-context_length = 1024
-compression = 4
-n_layers = 16
+context_length = 512
+compression = 1
+n_layers = 8
 n_heads = 4
 
 vocab_size = 8000
@@ -48,7 +48,7 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
 # transformer autoencoder (custom blocks)
 # encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
@@ -65,9 +65,9 @@ model = LlamaForCausalLM(configuration).float()
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
 
 # unrolled embedding transformer autoencoder
-#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
@@ -103,21 +103,21 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 16
+batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_transformer\
+output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer_nonmidout\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

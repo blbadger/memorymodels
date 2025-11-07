@@ -116,6 +116,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = LlamaModel(configuration).float()
 
 #encoder_model = LlamaModel(configuration)
+<<<<<<< HEAD
 model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False, noise_embedding=False)
 safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/model.safetensors')
 
@@ -131,6 +132,15 @@ def insert_identity(model):
 #	save_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 	return model
 
+=======
+model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
+<<<<<<< HEAD
+safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/model.safetensors')
+=======
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors')
+>>>>>>> c1e2e3ace26a9b37b1276c17ee4e77b7d6aa8068
+print (model)
+>>>>>>> a10b16f299029bd34632130a984cf715e2d394b9
 #model = insert_identity(model)
 
 qconfig = QConfig(
@@ -138,10 +148,14 @@ qconfig = QConfig(
     weight=MovingAverageMinMaxObserver.with_args(dtype=torch.qint8),
 )
 
+<<<<<<< HEAD
 #qconfig = QConfig(
 #    activation=default_dynamic_quant_observer.with_args(dtype=torch.qint8),
 #    weight=default_dynamic_quant_observer.with_args(dtype=torch.float16),
 #)
+=======
+#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4/checkpoint-200000/updated_model.safetensors')
+>>>>>>> a10b16f299029bd34632130a984cf715e2d394b9
 
 #safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/updated_model.safetensors')
 #print (model.up[0].weight)
@@ -184,7 +198,7 @@ class CustomDtypeUpcast(nn.Module):
 	def forward(self, x):
 		return from_custom_float8(x)
 
-# model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e5m2), CastToDtype(torch.float32))
+#model.up[0] = nn.Sequential(model.up[0], CastToDtype(torch.float8_e4m3fn), CastToDtype(torch.float32))
 
 #model.down = nn.Sequential(model.down, CustomDtypeCast(), CustomDtypeUpcast()) 
 
@@ -197,10 +211,18 @@ class CustomDtypeUpcast(nn.Module):
 
 activation = {}
 def get_activation(name):
+<<<<<<< HEAD
     def hook(model, input, output):
         activation[name] = output.detach()
     return hook
 #model.down.register_forward_hook(get_activation('down'))
+=======
+	def hook(model, input, output):
+		activation[name] = output.detach()
+	return hook
+
+# model.down.register_forward_hook(get_activation('down'))
+>>>>>>> a10b16f299029bd34632130a984cf715e2d394b9
 #model.up[0].register_forward_hook(get_activation('up[0]'))
 
 print(model)
@@ -250,8 +272,13 @@ model.eval()
 print (trainer.evaluate())
 
 #print (activation['down'], activation['up[0]'])
+<<<<<<< HEAD
 #fior i in range(10):
 #    print ([str(i.item()) + ',' for i in activation['down'][i][0]], ',')
+=======
+#for i in range(10):
+#    print ([float(v) for v in activation['up[0]'][i][0]], ',')
+>>>>>>> a10b16f299029bd34632130a984cf715e2d394b9
 
 results = observe_sensitivities(model, weights=True)
 output = {'results': results}

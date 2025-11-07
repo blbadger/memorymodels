@@ -20,9 +20,10 @@ from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryM
 from mixer_autoencoder import TruncatedModel, RecurrentMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
+
+
 from dotenv import load_dotenv
 import pathlib
-
 load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
@@ -33,24 +34,23 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 def compute_hamming_loss(model, inputs, num_items_in_batch=None):
-        print (inputs)
         if isinstance(inputs, dict) and "labels" in inputs:
             labels = inputs["labels"]
         else:
             labels = None
         outputs = model(inputs)
 
-        total_loss = 0
+        total_loss = 0 
         if labels is not None:
             for i in range(len(inputs['input_ids'])):
                 loss = hamming_metric(outputs[i], labels[i], num_items_in_batch=num_items_in_batch)
-            total_loss += loss	
-	
+            total_loss += loss  
+            
         return loss/len(inputs['input_ids'])
 
 
 def hamming_metric(model_output, input_tokens, *args, **kwargs):
-    total_metric = 0
+    total_metric = 0 
     generated_tokens = torch.argmax(model_output[1], dim=1)
     for i in range(len(generated_tokens)):
         # expects tokens to be pre-flattened
@@ -77,6 +77,7 @@ if __name__ == '__main__':
     compression = 1
     heads = 0
     kernel = 1
+    n_vocab = 80000
 
     # mixer model initialization
     model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)

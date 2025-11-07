@@ -34,10 +34,10 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 256
-encoder_dim = 512
-decoder_dim = 512
-n_layers = 8
+tokenized_length = 1024
+encoder_dim = 1024
+decoder_dim = 1024
+n_layers = 16
 compression = 1
 heads = 0
 kernel = 1
@@ -52,7 +52,7 @@ class modelwrap(nn.Module):
         return self.model(input_ids, *args)
 
 # mixer model initialization
-model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')

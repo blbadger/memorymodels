@@ -33,11 +33,11 @@ checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
-encoder_dim = 256
-decoder_dim = 512
-context_length = 1024
-compression = 4
-n_layers = 16
+encoder_dim = 1024
+decoder_dim = 1024
+context_length = 512
+compression = 1
+n_layers = 4
 n_heads = 4
 
 vocab_size = 8000
@@ -137,7 +137,6 @@ def gradientxinput(model, input_ids, output_measure='l1'):
 	memory_gradxinputs = torch.stack(memory_gradxinputs, dim=1)
 	return memory_gradxinputs
 
-
 @torch.no_grad()
 def memory_occlusion(model, input_ids, output_measure='l1'):
 	"""
@@ -158,7 +157,6 @@ def memory_occlusion(model, input_ids, output_measure='l1'):
 	elif output_measure == 'loss':
 		# measure occlusion on unreduced model loss
 		measure = torch.abs(occluded_loss - loss).to('cpu')
-	print (loss, occluded_loss)
 	return measure
 
 @torch.no_grad()
@@ -210,13 +208,11 @@ if __name__ == '__main__':
 	encoder_model = LlamaModel(configuration).float()
 
 	#encoder_model = LlamaModel(configuration)
-	model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
+	# model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 
-	#model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
-	#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
-	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
-	#model.cel = nn.CrossEntropyLoss(reduction='none')
-	model.eval()
+	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
+	#safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=False) # no decoder_input_embeds param in original model
+	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_tmemory_transformer_e1024c1_d1024_n4_c512_b32/checkpoint-200000/model.safetensors')
 	use_ddp = False
 	if not use_ddp:	
 		device_id = 0	
@@ -232,13 +228,13 @@ if __name__ == '__main__':
 	tokenizer.pad_token = tokenizer.eos_token
 	n_vocab = len(tokenizer)
 
-	train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-	test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(8132)
+	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(32)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)
@@ -246,41 +242,13 @@ if __name__ == '__main__':
 	start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
 	test_dataset = test_dataset.skip(start).take(end - start)
 	mlflow.end_run()
-	batch_size = 128
+	batch_size = 32
 	attributions = []
 	ids = []
 	if len(test_dataset) % batch_size == 0:
 		batches = len(test_dataset) // batch_size
 	else:
 		batches = len(test_dataset) // (batch_size) + 1
-
-
-	training_arguments = transformers.TrainingArguments(
-        num_train_epochs=3,
-        per_device_train_batch_size=64,
-        per_device_eval_batch_size=64,
-        warmup_steps=500,
-        eval_steps=4000,
-        save_steps=8000,
-        learning_rate=2e-4, 
-        fp16=True, 
-        eval_strategy='steps',
-        output_dir='/home/badger',
-        optim='adamw_torch',
-        overwrite_output_dir=False,
-        max_steps=200000
-)
-
-	trainer = transformers.Trainer(
-        model=model,
-        train_dataset=test_dataset,
-        eval_dataset=test_dataset,
-        args=training_arguments,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-        )   
-	print (trainer.evaluate())
-
-	
 
 	masks = []	
 	for sample_index in tqdm(range(batches)):
@@ -296,39 +264,15 @@ if __name__ == '__main__':
 	print_attributions = {}
 	for i, attribution in enumerate(attributions[0]):
 		if test_dataset[i]['input_ids'][0] != 1:
-			print (torch.mean(attribution), attribution)
+			print (torch.mean(attribution))
 			print_attributions[ids[0][i]] = [batch['input_ids'][i], attribution.tolist()]
 	d = {'attributions': print_attributions}
-	with open('/home/badger/loss_attributions.json', 'w') as f:
+	with open('/home/badger/large_loss_attributions.json', 'w') as f:
 		json.dump(d, f)
 	
 	attributions_dict = {'attribution': attributions, 'ids': ids}
 	attributions_dataset = Dataset.from_dict(attributions_dict)
 	#attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-occlusion-lpad-8k_{rank}")
 
-	training_arguments = transformers.TrainingArguments(
-        num_train_epochs=3,
-        per_device_train_batch_size=64,
-        per_device_eval_batch_size=64,
-        warmup_steps=500,
-        eval_steps=4000,
-        save_steps=8000,
-        learning_rate=2e-4, 
-        fp16=True, 
-        eval_strategy='steps',
-        output_dir='/home/badger',
-        optim='adamw_torch',
-        overwrite_output_dir=False,
-        max_steps=200000
-)
-
-	trainer = transformers.Trainer(
-        model=model,
-        train_dataset=test_dataset,
-        eval_dataset=test_dataset,
-        args=training_arguments,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-        )   
-	#print (trainer.evaluate())
 
 	

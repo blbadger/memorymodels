@@ -270,16 +270,19 @@ class MemoryTransformer(nn.Module):
 		# feed pre-concatenated input embeddings to the transformer decoder
 		x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 		output = self.lm_head(x.last_hidden_state)
-		if labels.dim() > 2:
-			labels = rearrange(labels, 'b p t -> b (p t)')
-		output = rearrange(output, 'b t e -> b e t')
-		shift_labels, shift_logits = labels, output
-		if self.combination_dim == 'token':
-			shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
+		if labels is not None:
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_labels, shift_logits = labels, output
+			if self.combination_dim == 'token':
+				shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
+			else:
+				shift_logits = output[..., :-1].contiguous()
+			shift_labels = labels[..., 1:].contiguous() 
+			loss = self.cel(shift_logits, shift_labels)
 		else:
-			shift_logits = output[..., :-1].contiguous()
-		shift_labels = labels[..., 1:].contiguous() 
-		loss = self.cel(shift_logits, shift_labels)
+			loss = 0
 		return loss, output
 
 class FrozenMemoryTransformer(nn.Module):

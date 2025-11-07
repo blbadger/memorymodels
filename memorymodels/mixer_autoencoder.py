@@ -170,9 +170,10 @@ class AutoencodingMixer(nn.Module):
 			embedding_stack = []
 			# sliding window unroll over hidden dim
 			for i in range(self.tokenized_length):
+				i %= self.dim
 				sliding_window = encoder_embedding[..., i:i+self.dim//2]
 				if i+self.dim//2 > self.dim:
-					residual = i+self.dim//2 - self.tokenized_length
+					residual = i + self.dim//2 - self.dim # originally (- self.tokenized_length)
 					# loop around to first index
 					sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
 				embedding_stack.append(sliding_window)
@@ -672,7 +673,7 @@ class ProjMemoryMixer(nn.Module):
 			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_labels, shift_logits = labels, output
-		shift_logits = output[..., 1:-1].contiguous() # first 'token' is encoding
+		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous() 
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output

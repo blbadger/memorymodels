@@ -138,7 +138,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
                 for i in range(self.tokenized_length):
                         sliding_window = encoder_embedding[..., i:i+self.dim//2]
                         if i+self.dim//2 > self.dim:
-                                residual = i+self.dim//2 - self.tokenized_length
+                                residual = i+self.dim//2 - self.dim #self.tokenized_length
                                 # loop around to first index
                                 sliding_window = torch.cat((sliding_window, encoder_embedding[..., :residual]), dim=2)
                         embedding_stack.append(sliding_window)
@@ -149,7 +149,10 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
                 output = self.lm_head(x)
                 output = rearrange(output, 'b t e -> b e t')
-                loss = self.cel(output, labels)
+                if labels:
+                        loss = self.cel(output, labels)
+                else:
+                        loss = 0
                 return loss, output
 
 

@@ -46,7 +46,7 @@ if __name__ == '__main__':
     data_root = os.getenv('DATA_ROOT')
 
     dataset = load_dataset("bigcode/the-stack-dedup", data_dir="data/python", split="train")
-    old_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+    old_tokenizer = AutoTokenizer.from_pretrained("{data_root}/tokenizer_fineweb_8k")
 
     # DataLoader for efficient batch processing
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)

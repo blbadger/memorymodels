@@ -82,14 +82,14 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-lossattr-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-50k-exloss-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-50k-exloss-lpad-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path).take(50000)
 test_dataset = load_from_disk(test_path)
 
-batch_size = 32
+batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -109,7 +109,7 @@ training_arguments = transformers.TrainingArguments(
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
 	eval_steps=500,
-	save_steps=4000,
+	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=False,
 	bf16=True, 

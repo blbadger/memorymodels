@@ -30,7 +30,7 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-def load_encoder()
+def load_encoder():
 	encoder_dim = 512
 	decoder_dim = 512
 	context_length = 512
@@ -41,11 +41,11 @@ def load_encoder()
 	vocab_size = 8000
 
 	llama_config_kwargs = {
-	     'hidden_size':decoder_dim,
-	     'intermediate_size': 4*decoder_dim,
-	     'num_hidden_layers': n_layers,
-	     'num_attention_heads': n_heads,
-	     'vocab_size': vocab_size
+		 'hidden_size':decoder_dim,
+		 'intermediate_size': 4*decoder_dim,
+		 'num_hidden_layers': n_layers,
+		 'num_attention_heads': n_heads,
+		 'vocab_size': vocab_size
 	 }
 
 	# Initializing a LLaMA model
@@ -63,38 +63,38 @@ def load_encoder()
 def copy_dataset(example):
 	# copy inputs
 	input_ids = example['input_ids']
-    n_ctx = len(input_ids[0])
-    for i, input in enumerate(input_ids):
-        first_half = input[:n_ctx//2]
-        copied_halves = torch.cat((first_half, first_half))
-        input_ids[i] = copied_halves
-    example['input_ids'] = input_ids
+	n_ctx = len(input_ids[0])
+	for i, input in enumerate(input_ids):
+		first_half = input[:n_ctx//2]
+		copied_halves = torch.cat((first_half, first_half))
+		input_ids[i] = copied_halves
+	example['input_ids'] = input_ids
 
-    # copy labels
+	# copy labels
 	labels = example['labels']
-    n_ctx = len(labels[0])
-    for i, input in enumerate(labels):
-        first_half = input[:n_ctx//2]
-        pad_half = torch.ones(first_half.shape).to(device) * -100
-        halves = torch.cat((pad_half, first_half))
-        labels[i] = halves
-    example['labels'] = labels
-    return example
+	n_ctx = len(labels[0])
+	for i, input in enumerate(labels):
+		first_half = input[:n_ctx//2]
+		pad_half = torch.ones(first_half.shape).to(device) * -100
+		halves = torch.cat((pad_half, first_half))
+		labels[i] = halves
+	example['labels'] = labels
+	return example
 
 @torch.no_grad()
 def hamming(model_output, labels):
-    total_metric = 0
-    #ignore_list = [tokenizer.pad_token, tokenizer.encode(tokenizer.eos_token)[-1]]
-    input_tokens = labels
-    generated_tokens = torch.argmax(model_output, dim=-1)
-    nonpad_tokens = torch.where(labels != -100, 1, 0)
-    equal_tokens = torch.where(generated_tokens == labels, 1, 0) & nonpad_tokens
-    average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
-    return average_metric
+	total_metric = 0
+	#ignore_list = [tokenizer.pad_token, tokenizer.encode(tokenizer.eos_token)[-1]]
+	input_tokens = labels
+	generated_tokens = torch.argmax(model_output, dim=-1)
+	nonpad_tokens = torch.where(labels != -100, 1, 0)
+	equal_tokens = torch.where(generated_tokens == labels, 1, 0) & nonpad_tokens
+	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
+	return average_metric
 
 def compute_hamming_metric(eval_preds):
-    logits, labels = eval_preds
-    return hamming(logits, labels)
+	logits, labels = eval_preds
+	return hamming(logits, labels)
 
 encoder_dim = 512 
 decoder_dim = 512
@@ -122,7 +122,7 @@ batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
-    n_devices = torch.cuda.device_count()
+	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_c256x4\

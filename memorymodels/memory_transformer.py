@@ -170,6 +170,7 @@ class VariableMemoryTransformer(nn.Module):
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)
 		total_loss = 0
+		all_outputs = []
 		for c in range(self.chunks): # self.chunks
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 			if self.fixed_memory:
@@ -186,6 +187,7 @@ class VariableMemoryTransformer(nn.Module):
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
+			all_outputs.append(output[..., c:]) # assemble all outputs
 			shift_labels, shift_logits = labels, output
 			if self.fixed_memory:
 				shift_logits = output[..., self.chunks:self.chunks+self.tokenized_length-1].contiguous()
@@ -194,7 +196,9 @@ class VariableMemoryTransformer(nn.Module):
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
 			total_loss += loss
+
 		mean_loss = total_loss / self.chunks
+		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
 		return mean_loss, output
 
 

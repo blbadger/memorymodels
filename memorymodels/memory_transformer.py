@@ -14,7 +14,7 @@ def copy_dataset(input_ids):
 	n_ctx = len(input_ids[0])
 	for i, input in enumerate(input_ids):
 		first_half = input[:n_ctx//2]
-		copied_halves = torch.cat((first_half, first_half))
+		copied_halves = torch.cat((first_half, first_half)).to(torch.long)
 		input_ids[i] = copied_halves
 	return input_ids
 
@@ -23,7 +23,7 @@ def copy_labels(labels):
 	for i, input in enumerate(labels):
 		first_half = input[:n_ctx//2]
 		pad_half = torch.ones(first_half.shape).to(device) * -100
-		halves = torch.cat((pad_half, first_half))
+		halves = torch.cat((pad_half, first_half)).to(torch.long)
 		labels[i] = halves
 	return labels
 	
@@ -154,7 +154,7 @@ class VariableMemoryTransformer(nn.Module):
 		while input_ids.shape[1] - self.tokenized_length > i:
 			input_chunk, attention_chunk = self.wte(input_ids[:, i: i+self.tokenized_length]), attention_mask[:, i: i+self.tokenized_length]
 			
-			x = self.encoder(input_chunk, attention_mask=attention_chunk)
+			x = self.encoder(inputs_embeds=input_chunk, attention_mask=attention_chunk)
 			if not torch.is_tensor(x):
 				x = x.last_hidden_state
 			

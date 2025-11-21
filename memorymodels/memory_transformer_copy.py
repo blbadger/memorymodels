@@ -75,18 +75,18 @@ def compute_hamming_metric(eval_preds):
 	logits, labels = eval_preds
 	return hamming(logits, labels)
 
-encoder_dim = 512 
-decoder_dim = 512
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+tokenizer.pad_token = tokenizer.eos_token
+n_vocab = len(tokenizer)
+
+encoder_dim = 256
+decoder_dim = 256
 context_length = 256
 compression = 1 
 n_layers = 16 
 n_heads = 4
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
+model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
 								  fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True)
-
-tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
@@ -97,7 +97,7 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
-batch_size = 32
+batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -116,7 +116,6 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	gradient_accumulation_steps=2,
 	warmup_steps=50,
 	eval_steps=100,
 	save_steps=10000,
@@ -135,7 +134,7 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-	compute_metric = compute_hamming_metric
+	compute_metrics = compute_hamming_metric
 )
 
 # save driver code snapshot in checkpoint dir

@@ -63,17 +63,17 @@ def load_encoder():
 @torch.no_grad()
 def hamming(model_output, labels):
 	total_metric = 0
-	labels= torch.tensor(labels)
-	model_output = torch.tensor(model_output[0])
+	# assign and shift outputs and labels
+	labels= torch.tensor(labels)[..., 1:]
+	model_output = torch.tensor(model_output[0])[..., :-1]
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
-	return torch.tensor(average_metric)
+	return torch.tensor([average_metric])
 
 def compute_hamming_metric(eval_preds):
 	logits, labels = eval_preds
-	hamming = torch.tensor([hamming(logits, labels)])
-	return hamming
+	return hamming(logits, labels)
 
 def preprocess_logits_for_metrics(logits, labels):
     """

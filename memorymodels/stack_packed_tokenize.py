@@ -9,14 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 data_root = os.getenv('DATA_ROOT')
 
-tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_stack_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 all_tokens = torch.tensor([])
 def all_packed_tokenization(example):
 	n_ctx = context_length # global context_length
 	tokens = tokenizer.encode_plus(
-			example['text'],
+			example['content'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=False,
@@ -39,7 +39,7 @@ def all_packed_tokenization(example):
 def packed_tokenization(example):
 	n_ctx = context_length # global context_length
 	tokens = tokenizer.encode_plus(
-			example['text'],
+			example['content'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=False,
@@ -55,7 +55,7 @@ def tokenization(example):
 	# global padding_side, context_length
 	n_ctx = context_length
 	tokens = tokenizer.batch_encode_plus(
-			example['text'],
+			example['content'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
@@ -66,19 +66,12 @@ def tokenization(example):
 	return tokens
 
 
-def map_dataset(train_path, test_path, split_index=50000, packed=False, fineweb=True, context=512, minimum_length=0):
+def map_dataset(train_path, test_path, split_index=50000, packed=False, context=512, minimum_length=0):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
-	if fineweb:
-		# fineweb loaders
-		train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
-		test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
-
-	else:
-		# finemath loaders
-		train_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).skip(split_index)
-		test_text = load_dataset("HuggingFaceTB/finemath", "finemath-4plus", split="train", num_proc=16).take(split_index)
+	train_text = load_dataset("bigcode/the-stack-dedup", data_dir="data/python", split="train", num_proc=16).skip(split_index)
+	test_text = load_dataset("bigcode/the-stack-dedup", data_dir="data/python", split="train", num_proc=16).take(split_index)
 	
 	if packed:
 		batch = False
@@ -109,17 +102,16 @@ def debatch(example):
 	return pa.Table.from_pylist(debatched_inputs)
 
 # user-defined vals
-fineweb = True
 packed = False
-prefix = 'fineweb-edu' if fineweb else 'finemath'
+prefix = 'stack'
 context_length = 1024
-padding_side = 'left'
+padding_side = 'right'
 pad_contraction = '-lpad' if padding_side == 'left' else ''
 train_path = f"{data_root}/{prefix}-tokenized-train-c{context_length}{pad_contraction}-8k"
 test_path = f"{data_root}/{prefix}-tokenized-test-c{context_length}{pad_contraction}-8k"
 
 if __name__ == '__main__':
-	map_dataset(train_path, test_path, packed=packed, fineweb=fineweb)
+	map_dataset(train_path, test_path, packed=packed)
 	train_dataset = load_from_disk(train_path)
 	test_dataset = load_from_disk(test_path)
 	if packed:
@@ -135,7 +127,6 @@ if __name__ == '__main__':
 		train_dataset.save_to_disk(train_path+'-debatched')
 		shutil.rmtree(train_path)
 	
-
 
 
 

@@ -68,11 +68,12 @@ def hamming(model_output, labels):
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
-	return average_metric
+	return torch.tensor(average_metric)
 
 def compute_hamming_metric(eval_preds):
 	logits, labels = eval_preds
-	return hamming(logits, labels)
+	hamming = torch.tensor([hamming(logits, labels)])
+	return hamming
 
 def preprocess_logits_for_metrics(logits, labels):
     """

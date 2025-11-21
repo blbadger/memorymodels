@@ -60,27 +60,6 @@ def load_encoder():
 	encoder = pretrained_autoencoder.encoder
 	return encoder
 
-def copy_dataset(example):
-	# copy inputs
-	input_ids = example['input_ids']
-	n_ctx = len(input_ids[0])
-	for i, input in enumerate(input_ids):
-		first_half = input[:n_ctx//2]
-		copied_halves = torch.cat((first_half, first_half))
-		input_ids[i] = copied_halves
-	example['input_ids'] = input_ids
-
-	# copy labels
-	labels = example['labels']
-	n_ctx = len(labels[0])
-	for i, input in enumerate(labels):
-		first_half = input[:n_ctx//2]
-		pad_half = torch.ones(first_half.shape).to(device) * -100
-		halves = torch.cat((pad_half, first_half))
-		labels[i] = halves
-	example['labels'] = labels
-	return example
-
 @torch.no_grad()
 def hamming(model_output, labels):
 	total_metric = 0
@@ -103,19 +82,19 @@ compression = 1
 n_layers = 16 
 n_heads = 4
 model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-								  fixed_memory=True, frozen_encoder=None, no_memory=False)
+								  fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True)
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).map(copy_labels, num_proc=16)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
 batch_size = 32
@@ -156,6 +135,7 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	compute_metric = compute_hamming_metric
 )
 
 # save driver code snapshot in checkpoint dir

@@ -199,7 +199,7 @@ class VariableMemoryTransformer(nn.Module):
 
 		mean_loss = total_loss / self.chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
-		return mean_loss, output
+		return mean_loss, all_outputs
 
 
 class MemoryTransformer(nn.Module):

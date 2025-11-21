@@ -63,10 +63,10 @@ def load_encoder():
 @torch.no_grad()
 def hamming(model_output, labels):
 	total_metric = 0
-	#ignore_list = [tokenizer.pad_token, tokenizer.encode(tokenizer.eos_token)[-1]]
-	input_tokens = labels
+	labels= torch.tensor(labels)
+	model_output = torch.tensor(model_output[0])
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
-	equal_tokens = torch.where(generated_tokens == labels, 1, 0) & nonpad_tokens
+	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
 	return average_metric
 
@@ -78,7 +78,8 @@ def preprocess_logits_for_metrics(logits, labels):
     """
     Original Trainer has a memory leak: a workaround to avoid saving all tensors
     """
-    pred_ids = torch.argmax(logits, dim=-1)
+    print (logits.shape)
+    pred_ids = torch.argmax(logits, dim=-2)
     return pred_ids, labels
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
@@ -123,7 +124,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=50,
-	eval_steps=100,
+	eval_steps=10,
 	save_steps=10000,
 	learning_rate=2e-4, 
 	fp16=True,

@@ -187,11 +187,13 @@ class VariableMemoryTransformer(nn.Module):
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
-			all_outputs.append(output[..., c:]) # assemble all outputs
+			
 			shift_labels, shift_logits = labels, output
 			if self.fixed_memory:
+				all_outputs.append(output[..., self.chunks:self.chunks+self.tokenized_length]) # assemble all outputs
 				shift_logits = output[..., self.chunks:self.chunks+self.tokenized_length-1].contiguous()
 			else:
+				all_outputs.append(output[..., c:]) # assemble all outputs
 				shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)

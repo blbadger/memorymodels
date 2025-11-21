@@ -65,7 +65,6 @@ def hamming(model_output, labels):
 	total_metric = 0
 	#ignore_list = [tokenizer.pad_token, tokenizer.encode(tokenizer.eos_token)[-1]]
 	input_tokens = labels
-	generated_tokens = torch.argmax(model_output, dim=-1)
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(generated_tokens == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
@@ -74,6 +73,13 @@ def hamming(model_output, labels):
 def compute_hamming_metric(eval_preds):
 	logits, labels = eval_preds
 	return hamming(logits, labels)
+
+def preprocess_logits_for_metrics(logits, labels):
+    """
+    Original Trainer has a memory leak: a workaround to avoid saving all tensors
+    """
+    pred_ids = torch.argmax(logits, dim=-1)
+    return pred_ids, labels
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -134,7 +140,8 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-	compute_metrics = compute_hamming_metric
+	compute_metrics = compute_hamming_metric,
+	preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )
 
 # save driver code snapshot in checkpoint dir

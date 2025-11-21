@@ -11,22 +11,22 @@ from mixer_autoencoder import MixerBlock
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def copy_dataset(input_ids):
-    n_ctx = len(input_ids[0])
-    for i, input in enumerate(input_ids):
-        first_half = input[:n_ctx//2]
-        copied_halves = torch.cat((first_half, first_half))
-        input_ids[i] = copied_halves
-    return input_ids
+	n_ctx = len(input_ids[0])
+	for i, input in enumerate(input_ids):
+		first_half = input[:n_ctx//2]
+		copied_halves = torch.cat((first_half, first_half))
+		input_ids[i] = copied_halves
+	return input_ids
 
 def copy_labels(labels):
-    n_ctx = len(labels[0])
-    for i, input in enumerate(labels):
-        first_half = input[:n_ctx//2]
-        pad_half = torch.ones(first_half.shape).to(device) * -100
-        halves = torch.cat((pad_half, first_half))
-        labels[i] = halves
-    return labels
-    
+	n_ctx = len(labels[0])
+	for i, input in enumerate(labels):
+		first_half = input[:n_ctx//2]
+		pad_half = torch.ones(first_half.shape).to(device) * -100
+		halves = torch.cat((pad_half, first_half))
+		labels[i] = halves
+	return labels
+	
 class RecurrentMemoryTransformer(nn.Module):
 
 	def __init__(self, n_vocab, dim, depth, length, n_heads=4, n_chunks=4):
@@ -140,9 +140,9 @@ class VariableMemoryTransformer(nn.Module):
 		input_ids = input_ids.to(device)
 
 		if self.copy:
-            input_ids = copy_dataset(input_ids)
-            if labels is not None:
-                labels = copy_labels(labels) # masks first half
+			input_ids = copy_dataset(input_ids)
+			if labels is not None:
+				labels = copy_labels(labels) # masks first half
 
 		# generate encoder embeddings
 		embedding_array = []

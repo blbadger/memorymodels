@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn as nn
 from einops import rearrange
 import transformers
 from transformers import AutoTokenizer
@@ -73,13 +74,13 @@ def hamming(model_output, labels):
 
 def compute_hamming_metric(eval_preds):
 	logits, labels = eval_preds
-	return hamming(logits, labels)
+	hamming_metric = hamming(logits, labels)
+	return {'Hamming Distance': hamming_metric}
 
 def preprocess_logits_for_metrics(logits, labels):
     """
     Original Trainer has a memory leak: a workaround to avoid saving all tensors
     """
-    print (logits.shape)
     pred_ids = torch.argmax(logits, dim=-2)
     return pred_ids, labels
 
@@ -125,7 +126,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=50,
-	eval_steps=10,
+	eval_steps=100,
 	save_steps=10000,
 	learning_rate=2e-4, 
 	fp16=True,
@@ -133,7 +134,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000
+	max_steps=10000
 )
 
 trainer = transformers.Trainer(

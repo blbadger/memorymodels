@@ -64,6 +64,9 @@ class RecurrentMemoryTransformer(nn.Module):
 
 
 class VariableMemoryTransformer(nn.Module):
+	"""
+	Fully featured memory model
+	"""
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False):
 		super().__init__()
@@ -172,6 +175,9 @@ class VariableMemoryTransformer(nn.Module):
 
 
 class MemoryTransformer(nn.Module):
+	"""
+	Oracle memory model, implemented for single-embedding introduction to the decoder
+	"""
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, combination_dim='token', transformer_encoder=None, n_heads=0, kernel=1, random=False, noise_embedding=False):
 		super().__init__()
@@ -287,7 +293,7 @@ class MemoryTransformer(nn.Module):
 
 class FrozenMemoryTransformer(nn.Module):
 	"""
-	Masked mixer memory model using a frozen pre-trained encoder. Implemented for token concatenation.
+	Transformer memory model using a frozen pre-trained encoder. Implemented for token concatenation.
 	"""
 
 	def __init__(self, n_vocab, encoder_model, encoder_dim, dim, depth, length, compression=4, n_heads=4):
@@ -349,6 +355,9 @@ class FrozenMemoryTransformer(nn.Module):
 		return loss, output
 
 class ProjMemoryTransformer(nn.Module):
+	"""
+	Transformer memory model implemented for token projection-based encoder-decoder transfer
+	"""
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1):
 		super().__init__()

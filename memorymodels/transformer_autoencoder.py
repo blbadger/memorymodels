@@ -136,6 +136,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
                 embedding_stack = []
                 # sliding window unroll over hidden dim
                 for i in range(self.tokenized_length):
+                        i %= self.dim
                         sliding_window = encoder_embedding[..., i:i+self.dim//2]
                         if i+self.dim//2 > self.dim:
                                 residual = i+self.dim//2 - self.dim #self.tokenized_length
@@ -149,7 +150,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
                 output = self.lm_head(x)
                 output = rearrange(output, 'b t e -> b e t')
-                if labels:
+                if labels is not None:
                         loss = self.cel(output, labels)
                 else:
                         loss = 0

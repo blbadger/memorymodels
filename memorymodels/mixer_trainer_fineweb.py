@@ -34,10 +34,10 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
+tokenized_length = 256
 encoder_dim = 512
 decoder_dim = 512
-n_layers = 8
+n_layers = 16
 compression = 1
 heads = 0
 kernel = 4
@@ -95,18 +95,18 @@ model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, comp
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 
 def get_chunk(example):
-	example['input_ids'] = example['input_ids'][256:]
+	example['input_ids'] = example['input_ids'][:256]
 	return example
-#train_dataset = train_dataset.map(get_chunk, num_proc=12)
-#test_dataset = test_dataset.map(get_chunk, num_proc=12)
+train_dataset = train_dataset.map(get_chunk, num_proc=12)
+test_dataset = test_dataset.map(get_chunk, num_proc=12)
 
 mlflow.end_run()
 
@@ -117,7 +117,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_mixer_autounroll_nonmiddleout\
+output_dir = f'{checkpoint_root}/fineweb_autoencoding_mixer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -133,8 +133,8 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=8000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
-	fp16=False,
-	bf16=True,
+	fp16=True,
+	bf16=False,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',

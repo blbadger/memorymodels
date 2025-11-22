@@ -13,6 +13,7 @@ from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
 import safetensors
+from safetensors.torch import load_model
 import datasets
 import warnings
 import shutil
@@ -88,14 +89,38 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-encoder_dim = 256
-decoder_dim = 256
+encoder_dim = 512 
+decoder_dim = 512 
+context_length = 256 
+compression = 1 
+n_layers = 8 
+n_heads = 4 
+
+vocab_size = 8000
+llama_config_kwargs = { 
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size
+}
+print (llama_config_kwargs)
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+
+load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+encoder = model.encoder.model
+encoder_dim = 512
+decoder_dim = 512
 context_length = 256
 compression = 1 
 n_layers = 16 
 n_heads = 4
 model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-								  fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True)
+								  fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
@@ -106,7 +131,7 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
-batch_size = 16
+batch_size = 8
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -125,8 +150,9 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
+	gradient_accumulation_steps=2,
 	warmup_steps=50,
-	eval_steps=100,
+	eval_steps=500,
 	save_steps=10000,
 	learning_rate=2e-4, 
 	fp16=True,

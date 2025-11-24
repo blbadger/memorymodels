@@ -28,6 +28,39 @@ data_root = os.getenv('DATA_ROOT')
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
+class modelwrap(nn.Module):
+
+    def __init__(self, model):
+        super().__init__() 
+        self.model = model
+
+    def forward(input_ids, *args):
+        return self.model(input_ids, *args)
+
+@torch.no_grad()
+def hamming(model_output, labels):
+	total_metric = 0
+	# assign and shift outputs and labels
+	labels= torch.tensor(labels)[..., 1:]
+	model_output = torch.tensor(model_output[0])[..., :-1]
+	nonpad_tokens = torch.where(labels != -100, 1, 0)
+	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
+	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
+	return torch.tensor([average_metric])
+
+def compute_hamming_metric(eval_preds):
+	logits, labels = eval_preds
+	hamming_metric = hamming(logits, labels)
+	return {'Hamming Distance': hamming_metric}
+
+def preprocess_logits_for_metrics(logits, labels):
+    """
+    Original Trainer has a memory leak: a workaround to avoid saving all tensors
+    """
+    pred_ids = torch.argmax(logits, dim=-2)
+    return pred_ids, labels
+
+
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -40,15 +73,6 @@ n_layers = 16
 compression = 1
 heads = 0
 kernel = 4
-
-class modelwrap(nn.Module):
-
-    def __init__(self, model):
-        super().__init__() 
-        self.model = model
-
-    def forward(input_ids, *args):
-        return self.model(input_ids, *args)
 
 # mixer model initialization
 #model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
@@ -141,6 +165,8 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	compute_metrics = compute_hamming_metric,
+	preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )
 
 # save driver snapshot

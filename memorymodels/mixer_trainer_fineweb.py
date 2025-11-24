@@ -110,7 +110,7 @@ test_dataset = test_dataset.map(get_chunk, num_proc=12)
 
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():

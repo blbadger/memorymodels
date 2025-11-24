@@ -99,7 +99,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
-test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
+test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=fp16`)
 
 batch_size = 16
 n_devices = 4

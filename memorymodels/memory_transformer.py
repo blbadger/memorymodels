@@ -92,7 +92,7 @@ class VariableMemoryTransformer(nn.Module):
 		self.decoder_dim = dim
 		if not self.no_memory:
 			if frozen_encoder:
-				for _, param in frozen_encoder.named_parameters():
+				for name, param in frozen_encoder.named_parameters():
 					param.requires_grad = False
 				self.encoder = frozen_encoder
 			else:

@@ -28,8 +28,8 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 512
-decoder_dim = 512
+encoder_dim = 256
+decoder_dim = 256
 context_length = 256
 compression = 1
 n_layers = 8

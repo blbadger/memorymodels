@@ -98,7 +98,7 @@ print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
-datasets.config.IN_MEMORY_MAX_SIZE = 50e9
+datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 

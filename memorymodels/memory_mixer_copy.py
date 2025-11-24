@@ -52,10 +52,10 @@ class modelwrap(nn.Module):
 
 # mixer model initialization
 #model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
-frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False)
+encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False)
 
 #encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
-#encoder =m odelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
+#encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
 safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_512c1_d512_n16_c256_b32x4/checkpoint-128000/model.safetensors')
 #encoder = encoder.model
 
@@ -70,7 +70,7 @@ safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencodin
 #model.load_state_dict(state_dict["model"])
 
 # frozen_encoder = encoder.encoderblocks
-frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
+frozen_encoder = TruncatedModel(encoder, autoencoder=True)
 
 model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, 
 							frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True)

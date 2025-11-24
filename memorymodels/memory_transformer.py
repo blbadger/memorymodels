@@ -190,7 +190,7 @@ class VariableMemoryTransformer(nn.Module):
 				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
 			
 			# feed pre-concatenated input embeddings to the transformer decoder
-			x = self.decoder(inputs_embeds=x)
+			x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 			output = self.lm_head(x.last_hidden_state)
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')

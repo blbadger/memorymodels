@@ -82,10 +82,11 @@ class RecurrentMemoryTransformer(nn.Module):
 
 class VariableMemoryTransformer(nn.Module):
 	"""
-	Fully featured memory model
+	Fully featured memory model. self.encoder and self.decoder are LlamaModel objects, with
+	fixed or variable position embedding introduction into the decoder.
 	"""
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=False):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=False, decoder=None):
 		super().__init__()
 
 		self.no_memory = no_memory
@@ -111,19 +112,26 @@ class VariableMemoryTransformer(nn.Module):
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_proj = None
 
-		llama_config_kwargs = {
-			'hidden_size': dim,
-			'intermediate_size': 4*dim,
-			'num_hidden_layers': depth,
-			'num_attention_heads': n_heads,
-			'vocab_size': n_vocab
-		}
-		decoder_configuration = LlamaConfig(**llama_config_kwargs)
-		self.decoder = LlamaModel(decoder_configuration)
-		self.decoder_wte = nn.Embedding(n_vocab, dim)
-		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		if decoder:
+			self.decoder = decoder.model
+			self.decoder_wte = decoder.wte
+			self.lm_head = decoder.lm_head
+
+		else:
+			llama_config_kwargs = {
+				'hidden_size': dim,
+				'intermediate_size': 4*dim,
+				'num_hidden_layers': depth,
+				'num_attention_heads': n_heads,
+				'vocab_size': n_vocab
+			}
+			decoder_configuration = LlamaConfig(**llama_config_kwargs)
+			self.decoder = LlamaModel(decoder_configuration)
+			self.decoder_wte = nn.Embedding(n_vocab, dim)
+			self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
 		if encoder_dim != dim:
-			self.decoder_proj = nn.Linear(encoder_dim, dim)
+			self.decoder_proj = nn.Linear(encoder_dim, dim) # project if necessary
 
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = length
@@ -198,6 +206,152 @@ class VariableMemoryTransformer(nn.Module):
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
 			total_loss += loss
+
+		mean_loss = total_loss / self.chunks
+		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
+		return mean_loss, all_outputs
+
+class ParVarMemTransformer(nn.Module):
+	"""
+	Parallelized memory transformer
+	"""
+
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=False, decoder=None):
+		super().__init__()
+
+		self.no_memory = no_memory
+		self.decoder_dim = dim
+		if not self.no_memory:
+			if frozen_encoder:
+				for _, param in frozen_encoder.named_parameters():
+					param.requires_grad = False
+				self.encoder = frozen_encoder
+			else:
+				llama_config_kwargs = {
+					'hidden_size': encoder_dim,
+					'intermediate_size': 4*encoder_dim,
+					'num_hidden_layers': depth,
+					'num_attention_heads': n_heads,
+					'vocab_size': n_vocab
+				}
+				encoder_configuration = LlamaConfig(**llama_config_kwargs)
+				self.encoder = LlamaModel(encoder_configuration)
+		else:
+			self.encoder = None
+
+		self.wte = nn.Embedding(n_vocab, encoder_dim)
+		self.decoder_proj = None
+
+		if decoder:
+			self.decoder = decoder.model
+			self.decoder_wte = decoder.wte
+			self.lm_head = decoder.lm_head
+
+		else:
+			llama_config_kwargs = {
+				'hidden_size': dim,
+				'intermediate_size': 4*dim,
+				'num_hidden_layers': depth,
+				'num_attention_heads': n_heads,
+				'vocab_size': n_vocab
+			}
+			decoder_configuration = LlamaConfig(**llama_config_kwargs)
+			self.decoder = LlamaModel(decoder_configuration)
+			self.decoder_wte = nn.Embedding(n_vocab, dim)
+			self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+
+		if encoder_dim != dim:
+			self.decoder_proj = nn.Linear(encoder_dim, dim) # project if necessary
+
+		self.cel = nn.CrossEntropyLoss()
+		self.tokenized_length = length
+		self.compression = compression > 1
+		self.chunks = n_chunks
+		self.fixed_memory = fixed_memory
+		if self.compression:
+			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
+			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
+		self.copy = copy
+		
+
+	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
+		input_ids = input_ids.to(device)
+
+		if self.copy:
+			input_ids = copy_dataset(input_ids)
+			if labels is not None:
+				labels = copy_labels(labels) # masks first half
+
+		# generate encoder embeddings
+		embedding_array = []
+		i = 0
+		if self.no_memory:
+			i = 1e9
+			embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.chunks)]
+
+		all_input_chunks = [], all_attention_chunks = []
+		while input_ids.shape[1] - self.tokenized_length > i:
+			input_chunk, attention_chunk = self.wte(input_ids[:, i: i+self.tokenized_length]), attention_mask[:, i: i+self.tokenized_length]
+			all_input_chunks.append(input_chunk)
+			all_attention_chunks.append(attention_chunk)
+
+		input_chunks = torch.stack(all_input_chunks, dim=1) # [b c t e] shape
+		attention_chunks = torch.stack(all_attention_chunks, dim=1)
+
+		
+		x = self.encoder(inputs_embeds=input_chunks, attention_mask=attention_chunks)
+		if not torch.is_tensor(x):
+			x = x.last_hidden_state
+		
+		encoder_embeddings = x[:, :, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+		if self.compression:
+			encoder_embedding = self.down(encoder_embedding)
+			encoder_embedding = self.up(encoder_embedding)
+		if self.decoder_proj:
+			encoder_embedding = self.decoder_proj(encoder_embedding)
+		embedding_array.append(encoder_embedding)
+		i += self.tokenized_length
+
+		# embedding_array now stores length // n_ctx - 1 embeddings
+		input_embeddings = self.decoder_wte(input_ids)
+		total_loss = 0
+		all_outputs = []
+		all_decoder_embeds = []
+		for c in range(self.chunks): # self.chunks
+			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
+
+			if self.fixed_memory:
+				pad = torch.ones((input_ids.shape[0], self.chunks-c, input_embeddings.shape[2])).to(device)
+				x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1) # concatenation on token dim
+			else:
+				x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
+			if attention_mask is not None:
+				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
+			all_decoder_embeds.append(x)
+			all_attention_masks.append(attention_mask)
+
+		input_chunks = torch.stack(all_decoder_embeds, dim=1) # [b c t e] shape
+		attention_chunks = torch.stack(all_attention_masks, dim=1)
+		
+		# feed pre-concatenated input embeddings to the transformer decoder
+		x = self.decoder(inputs_embeds=input_chunks, attention_mask=attention_masks)
+		output = self.lm_head(x.last_hidden_state)	
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b c t e -> b e (c t)', c=c)
+
+		# pick up here: check shape valid for llamamodel, concat in batch dim if not
+		
+		shift_labels, shift_logits = labels, output
+		if self.fixed_memory:
+			all_outputs.append(output[..., self.chunks:self.chunks+self.tokenized_length]) # assemble all outputs
+			shift_logits = output[..., self.chunks:self.chunks+self.tokenized_length-1].contiguous()
+		else:
+			all_outputs.append(output[..., c:]) # assemble all outputs
+			shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
+		shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+		loss = self.cel(shift_logits, shift_labels)
+		total_loss += loss
 
 		mean_loss = total_loss / self.chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim

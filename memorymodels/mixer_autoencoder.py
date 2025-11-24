@@ -18,6 +18,23 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
+def copy_dataset(input_ids):
+	n_ctx = len(input_ids[0])
+	for i, input in enumerate(input_ids):
+		first_half = input[:n_ctx//2]
+		copied_halves = torch.cat((first_half, first_half)).to(torch.long)
+		input_ids[i] = copied_halves
+	return input_ids
+
+def copy_labels(labels):
+	n_ctx = len(labels[0])
+	for i, input in enumerate(labels):
+		first_half = input[:n_ctx//2]
+		pad_half = torch.ones(first_half.shape).to(device) * -100
+		halves = torch.cat((pad_half, first_half)).to(torch.long)
+		labels[i] = halves
+	return labels
+
 class MixerHead(nn.Module):
 
 	def __init__(self, dim, length, hidden_dim, n_heads=4, kernel=1):
@@ -282,7 +299,7 @@ class AutoencodingTransfixer(nn.Module):
 class VariableMemoryMixer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False,
-			  frozen_encoder=None):
+			  frozen_encoder=None, copy=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -327,9 +344,15 @@ class VariableMemoryMixer(nn.Module):
 		self.n_chunks = n_chunks
 		self.no_memory = no_memory
 		self.decoder_dim = dim
+		self.copy = copy
 		
 
 	def forward(self, input_ids, labels=None, **kwargs):
+		if self.copy:
+			input_ids = copy_dataset(input_ids)
+			if labels is not None:
+				labels = copy_labels(labels) # masks first half
+
 		input_ids = input_ids.to(device)
 		wte_embeds = self.wte(input_ids)
 		embedding_array = []

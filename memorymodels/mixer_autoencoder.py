@@ -379,6 +379,7 @@ class VariableMemoryMixer(nn.Module):
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)
 		total_loss = 0
+		all_outputs = []
 		for c in range(self.n_chunks):
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 			pad = torch.zeros((input_ids.shape[0], self.n_chunks-c, input_embeddings.shape[2])).to(device)
@@ -390,13 +391,16 @@ class VariableMemoryMixer(nn.Module):
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
+			all_outputs.append(output[..., self.chunks:self.chunks+self.tokenized_length]) 
 			shift_labels, shift_logits = labels, output
 			shift_logits = output[..., self.n_chunks:self.n_chunks+self.tokenized_length-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
 			total_loss += loss
+
 		mean_loss = total_loss / self.n_chunks
-		return mean_loss, output
+		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
+		return mean_loss, all_outputs
 
 
 class RecurrentMemoryMixer(nn.Module):

@@ -8,7 +8,7 @@ import mlflow
 
 from datasets import load_dataset, load_from_disk
 import transformers
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -70,16 +70,19 @@ def preprocess_logits_for_metrics(logits, labels):
 
 def tokenize_and_preprocess(example):
 	text = example['text']
-	tokens = decoder_tokenizer(text)
+	tokens = tokenizer(text, max_length=1024, padding='max_length', truncation=True) # return list, not tensor
 	example['input_ids'] = tokens['input_ids']
 	example['attention_mask'] = tokens['attention_mask']
 	return example
 
 model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
-decoder_tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
-encoder_model = lorify_model(model)
+tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
+#decoder_model = lorify_model(model)
+decoder_model = model
+print (decoder_model)
 
-encoder_tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+
+#tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer) #128k for llama 3.2
 encoder_dim = 512
@@ -97,10 +100,10 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
-test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=fp16)
+train_dataset = load_from_disk(train_path).take(10000).map(tokenize_and_preprocess, num_proc=16)
+test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 16
+batch_size = 8
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -149,3 +152,4 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
+trainer.train()

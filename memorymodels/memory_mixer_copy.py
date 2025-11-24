@@ -56,7 +56,7 @@ frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_len
 
 #encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #encoder =m odelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
-#safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
+safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_512c1_d512_n16_c256_b32x4/checkpoint-128000/model.safetensors')
 #encoder = encoder.model
 
 #checkpoint_path = pathlib.Path("/home/azureuser/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32")
@@ -69,8 +69,8 @@ frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_len
 
 #model.load_state_dict(state_dict["model"])
 
-frozen_encoder = encoder.encoderblocks
-#frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
+# frozen_encoder = encoder.encoderblocks
+frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
 
 model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, 
 							frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True)

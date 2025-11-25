@@ -126,7 +126,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memorymixer_nodecderinfo\
+output_dir = f'{checkpoint_root}/fineweb_memorymixer_nodecoderinfo\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

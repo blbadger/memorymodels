@@ -73,13 +73,13 @@ def corrupt_copy_dataset(input_ids, labels, fraction_corrupted=0.5):
 	n_ctx = len(input_ids[0])
 	all_indices = [i for i in range(n_ctx)]
 	entropies = []
-	corrupt_indices = set(random.sample(all_indices, n_ctx//fraction_corrupted))
-	entropy_array = [0 for i in range(n_ctx) if i not in corrupt_indices else 9.3] # assumes informationless output for 8k tokenizer
-	entropies = entropy_array * input_ids.shape[0]
-	entropies = torch.cat(entropies, dim=0)[:, 1:] #shift entropies
+	corrupt_indices = set(random.sample(all_indices, int((n_ctx//2)*fraction_corrupted)))
+	entropy_array = [0 if i not in corrupt_indices else 9.3 for i in range(n_ctx)] # assumes informationless output for 8k tokenizer
+	entropies = [torch.tensor(entropy_array) for i in range(input_ids.shape[0])]
+	entropies = torch.stack(entropies, dim=0)[:, 1:].to(device) #shift entropies
 	for i, input in enumerate(input_ids):
 		first_half = input[:n_ctx//2]
-		corrupted_half = [i for i in first_half if i-1 not in corrupt_indices else torch.randint(0, len(tokenizer)-1, 1)]
+		corrupted_half = torch.tensor([i if i not in corrupt_indices else torch.randint(0, len(tokenizer)-1, 1)[0] for i in first_half]).to(device)
 		copied_halves = torch.cat((first_half, corrupted_half)).to(torch.long)
 		input_ids[i] = copied_halves
 		
@@ -130,7 +130,7 @@ llama_config_kwargs = {
 	'num_hidden_layers': n_layers,
 	'num_attention_heads': n_heads,
 	'vocab_size': vocab_size,
-	'attention_dropout': 0.1
+	'attention_dropout': 0.
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
@@ -148,11 +148,11 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-50k-exloss-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-50k-exloss-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(50000)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
 batch_size = 64
@@ -162,7 +162,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_dropout_50k\
+output_dir = f'{checkpoint_root}/fineweb_corrupt_copy_transformer\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -203,6 +203,6 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-#trainer.train()
-trainer.train(output_dir + '/checkpoint-132000')
+trainer.train()
+#trainer.train(output_dir + '/checkpoint-132000')
 #print (trainer.evaluate())

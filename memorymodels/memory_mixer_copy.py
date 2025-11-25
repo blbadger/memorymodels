@@ -75,13 +75,9 @@ heads = 0
 kernel = 4
 
 # mixer model initialization
-#model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False)
-
-#encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
-#encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
 safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_512c1_d512_n16_c256_b32x4/checkpoint-128000/model.safetensors')
-#encoder = encoder.model
 
 #checkpoint_path = pathlib.Path("/home/azureuser/fineweb_tmemory_mixer_k8_1024c1_c1024_n8_c512_b32")
 #distcp_checkpoint_path = checkpoint_path / "pytorch_model_fsdp_0"
@@ -93,14 +89,11 @@ safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencodin
 
 #model.load_state_dict(state_dict["model"])
 
-# frozen_encoder = encoder.encoderblocks
+tokenized_length = 256
 frozen_encoder = TruncatedModel(encoder, autoencoder=True)
-
 model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, 
-							frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True)
+							frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True, encoder_ctx=None)
 
-#model = MemoryTransformer(n_vocab, dim//2, dim-dim//8, 16, tokenized_length, combination_dim='embedding').float()
-#model = ProjMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression).float()
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 #encoder = model.encoder
@@ -133,7 +126,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memorymixer_autoenc\
+output_dir = f'{checkpoint_root}/fineweb_memorymixer_nodecderinfo\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -144,9 +137,9 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=5000,
-	eval_steps=4000,
-	save_steps=8000,
+	warmup_steps=50,
+	eval_steps=500,
+	save_steps=20000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
 	fp16=True,
@@ -156,7 +149,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=200000
+	max_steps=1000000
 )
 
 trainer = transformers.Trainer(

@@ -18,11 +18,14 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def copy_dataset(input_ids):
+def copy_dataset(input_ids, blank_copy=False):
 	n_ctx = len(input_ids[0])
 	for i, input in enumerate(input_ids):
 		first_half = input[:n_ctx//2]
-		copied_halves = torch.cat((first_half, first_half)).to(torch.long)
+		if blank_copy:
+			copied_halves = torch.cat((first_half, torch.ones(first_half.shape).to(first_half.device))).to(torch.long)
+		else:
+			copied_halves = torch.cat((first_half, first_half)).to(torch.long)
 		input_ids[i] = copied_halves
 	return input_ids
 
@@ -299,7 +302,7 @@ class AutoencodingTransfixer(nn.Module):
 class VariableMemoryMixer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=4, n_heads=0, kernel=1, n_chunks=4, no_memory=False,
-			  frozen_encoder=None, copy=False):
+			  frozen_encoder=None, copy=False, encoder_ctx=False, blank_copy=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, encoder_dim)
 		self.decoder_wte = nn.Embedding(n_vocab, dim)
@@ -345,11 +348,13 @@ class VariableMemoryMixer(nn.Module):
 		self.no_memory = no_memory
 		self.decoder_dim = dim
 		self.copy = copy
+		self.blank_copy = blank_copy
+		self.encoder_ctx = encoder_ctx
 		
 
 	def forward(self, input_ids, labels=None, **kwargs):
 		if self.copy:
-			input_ids = copy_dataset(input_ids)
+			input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy)
 			if labels is not None:
 				labels = copy_labels(labels) # masks first half
 
@@ -362,6 +367,10 @@ class VariableMemoryMixer(nn.Module):
 			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
 		while input_ids.shape[1] - self.tokenized_length > i:
 			x = input_ids[:, i: i+self.tokenized_length]
+			if self.encoder_ctx is not None:
+				pad_length = self.encoder_ctx - x.shape[-1]
+				pad = torch.ones((input_ids.shape[0], pad_length), dtype=torch.long).to(x.device) # assumes pad id is 1
+				x = torch.cat((x, pad), dim=-1)
 			x = self.wte(x)
 			for block in self.encoderblocks:
 				x = block(x)
@@ -391,12 +400,13 @@ class VariableMemoryMixer(nn.Module):
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
-			all_outputs.append(output[..., self.chunks:self.chunks+self.tokenized_length]) 
+			all_outputs.append(output[..., self.n_chunks:self.n_chunks+self.tokenized_length]) 
 			shift_labels, shift_logits = labels, output
 			shift_logits = output[..., self.n_chunks:self.n_chunks+self.tokenized_length-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
-			total_loss += loss
+			if not torch.isnan(loss):
+				total_loss += loss
 
 		mean_loss = total_loss / self.n_chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim

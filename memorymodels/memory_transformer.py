@@ -10,13 +10,16 @@ from mixer_autoencoder import MixerBlock
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def copy_dataset(input_ids):
-	n_ctx = len(input_ids[0])
-	for i, input in enumerate(input_ids):
-		first_half = input[:n_ctx//2]
-		copied_halves = torch.cat((first_half, first_half)).to(torch.long)
-		input_ids[i] = copied_halves
-	return input_ids
+def copy_dataset(input_ids, blank_copy=False):
+        n_ctx = len(input_ids[0])
+        for i, input in enumerate(input_ids):
+                first_half = input[:n_ctx//2]
+                if blank_copy:
+                        copied_halves = torch.cat((first_half, torch.ones(first_half.shape).to(first_half.device))).to(torch.long)
+                else:
+                        copied_halves = torch.cat((first_half, first_half)).to(torch.long)
+                input_ids[i] = copied_halves
+        return input_ids
 
 def copy_labels(labels):
 	n_ctx = len(labels[0])
@@ -86,7 +89,7 @@ class VariableMemoryTransformer(nn.Module):
 	fixed or variable position embedding introduction into the decoder.
 	"""
 
-	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=False, decoder=None):
+	def __init__(self, n_vocab, encoder_dim, dim, depth, length, compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=False, decoder=None, blank_copy=False):
 		super().__init__()
 
 		self.no_memory = no_memory
@@ -142,13 +145,14 @@ class VariableMemoryTransformer(nn.Module):
 			self.down = nn.Linear(encoder_dim, encoder_dim//compression)
 			self.up = nn.Linear(encoder_dim//compression, encoder_dim)
 		self.copy = copy
+		self.blank_copy = blank_copy
 		
 
 	def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
 		input_ids = input_ids.to(device)
 
 		if self.copy:
-			input_ids = copy_dataset(input_ids)
+			input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy)
 			if labels is not None:
 				labels = copy_labels(labels) # masks first half
 
@@ -205,8 +209,11 @@ class VariableMemoryTransformer(nn.Module):
 				shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
 			loss = self.cel(shift_logits, shift_labels)
-			total_loss += loss
+			if not torch.isnan(loss):
+				total_loss += loss
 
+		if total_loss == 0:
+			total_loss = loss
 		mean_loss = total_loss / self.chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
 		return mean_loss, all_outputs

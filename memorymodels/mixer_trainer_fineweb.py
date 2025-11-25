@@ -34,7 +34,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 256
+tokenized_length = 512
 encoder_dim = 512
 decoder_dim = 512
 n_layers = 16
@@ -105,12 +105,12 @@ test_dataset = load_from_disk(test_path, keep_in_memory=None)
 def get_chunk(example):
 	example['input_ids'] = example['input_ids'][:256]
 	return example
-train_dataset = train_dataset.map(get_chunk, num_proc=12)
-test_dataset = test_dataset.map(get_chunk, num_proc=12)
+#train_dataset = train_dataset.map(get_chunk, num_proc=12)
+#test_dataset = test_dataset.map(get_chunk, num_proc=12)
 
 mlflow.end_run()
 
-batch_size = 32
+batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():

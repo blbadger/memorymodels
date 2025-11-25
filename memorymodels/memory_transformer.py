@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 import transformers
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel
+from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel, PeftForCausalLM
 import mlflow
 from datasets import load_dataset
 from mixer_autoencoder import MixerBlock
@@ -116,9 +116,14 @@ class VariableMemoryTransformer(nn.Module):
 		self.decoder_proj = None
 
 		if decoder:
-			self.decoder = decoder.model
-			self.decoder_wte = decoder.wte
-			self.lm_head = decoder.lm_head
+			if isinstance(decoder, PeftModelForCausalLM):
+				self.decoder = decoder.base_model.model.model
+				self.decoder_wte = decoder.base_model.model.model.embed_tokens
+				self.lm_head = decoder.base_model.model.lm_head
+			else:
+				self.decoder = decoder.model
+				self.decoder_wte = decoder.model.embed_tokens
+				self.lm_head = decoder.lm_head
 
 		else:
 			llama_config_kwargs = {
@@ -194,7 +199,7 @@ class VariableMemoryTransformer(nn.Module):
 				attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
 			
 			# feed pre-concatenated input embeddings to the transformer decoder
-			x = self.decoder(inputs_embeds=x)
+			x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 			output = self.lm_head(x.last_hidden_state)
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')

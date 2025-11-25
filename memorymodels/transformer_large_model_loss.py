@@ -19,12 +19,13 @@ import torch.distributed as dist
 import json
 import warnings
 from dotenv import load_dotenv
-import asyncio
+from multiprocessing import Pool
+
 
 warnings.filterwarnings(action='ignore')
 all_context_losses = []
 
-async def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses, small_tokens):
+def convert_loss(text, tokenizer, large_tokenizer, large_tokens, large_token_losses, small_tokens):
     """
     Converts loss from large tokenizer to small tokenizer via per-character averages
     """
@@ -76,6 +77,9 @@ def clm_unreduced_loss(model_output, large_tokens, text, small_tokens, reduction
     loss = loss_fn(shifted_model_output, target.to(device_id)).to('cpu')
     #print (torch.mean(loss))
     converted_loss = convert_loss(text, tokenizer, large_tokenizer, large_tokens, loss, small_tokens)
+    #with Pool(2) as p:
+    #    args = [(text[:16], tokenizer, large_tokenizer, large_tokens[:16], loss[:16], small_tokens[:16]), (text[16:], tokenizer, large_tokenizer, large_tokens[16:], loss[16:], small_tokens[16:])]
+    #    converted_loss = p.starmap(convert_loss, args)
     return converted_loss
 
 loss_fn = nn.CrossEntropyLoss(reduction='none')
@@ -108,7 +112,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
 # if you have a new dataset, map before loading from disk
 datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
-test_dataset = load_from_disk(train_path, keep_in_memory=None).take(1500000)#.filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(64)
+test_dataset = load_from_disk(test_path, keep_in_memory=None)#.take(1000000)#.filter(lambda x: x['input_ids'][0] != 1, num_proc=16).take(64)
 
 n_gpus = torch.cuda.device_count()
 dataset_length = len(test_dataset)
@@ -130,7 +134,7 @@ for sample_index in tqdm(range(batches)):
     attention_mask = torch.tensor(batch['attention_mask']).to(device_id)
     input_ids = torch.tensor(batch['input_ids']).to(device_id)
     text = tokenizer.batch_decode(input_ids)
-    large_input_ids = large_tokenizer(text, padding='max_length', max_length=1024)['input_ids']
+    large_input_ids = large_tokenizer(text, padding='max_length', max_length=1024, truncation=True)['input_ids']
     large_input_tensor = torch.stack([torch.tensor(s) for s in large_input_ids], dim=0).to(device_id)
     large_attention_mask = torch.where(large_input_tensor==128001, 0, 1).to(device_id)
     ids.append(batch['id'])
@@ -157,4 +161,4 @@ for sample_index in tqdm(range(batches)):
 # print (attributions_dict)
 
 attributions_dataset = Dataset.from_dict(attributions_dict)
-attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-lpad-1bllama-8k_{rank}")
+attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-test-lpad-1bllama-8k_{rank}")

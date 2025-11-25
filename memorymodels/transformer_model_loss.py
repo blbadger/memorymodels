@@ -59,7 +59,6 @@ def clm_unreduced_loss(model_output, input_tokens, reduction=False, *args, **kwa
     model_output = rearrange(model_output.logits, 'b t e -> b e t')[:, :, :-1]
     loss = loss_fn(model_output, target) 
     loss_per_sample, tokens_per_sample = torch.sum(loss, dim=1)/torch.sum(mask, dim=1) , torch.sum(mask, dim=1)
-    print (loss_per_sample, tokens_per_sample)
     total_loss, total_tokens = 0, 0
     for i, l in enumerate(loss_per_sample):
         if tokens_per_sample[i] == 1023:
@@ -134,7 +133,7 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available else 'cpu'
     encoder_dim = 256
-    decoder_dim = 512
+    decoder_dim = 1024
     context_length = 1024
     n_layers = 16
     n_heads = 4
@@ -194,7 +193,7 @@ if __name__ == '__main__':
     start, end = device_id * device_chunk_size, (device_id+1) * device_chunk_size
     test_dataset = test_dataset.skip(start).take(end - start)
     mlflow.end_run()
-    batch_size = 32
+    batch_size = 64
     attributions = []
     ids = []
     if len(test_dataset) % batch_size == 0:
@@ -213,10 +212,10 @@ if __name__ == '__main__':
             outputs = model.forward(input_ids, attention_mask) # for clm: labels=None)
             loss = clm_unreduced_loss(outputs, input_ids, reduction=False)
             attributions.append(loss.to('cpu'))
-    print (all_context_losses)
+    #print (all_context_losses)
     torch.distributed.barrier()
     tokenizer.pad_token = tokenizer.eos_token
     attributions_dict = {'memory_attribution': attributions, 'ids': ids}
    # print (attributions_dict)
-    #attributions_dataset = Dataset.from_dict(attributions_dict)
-    #attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-train-test-lpad-8k_{rank}")
+    attributions_dataset = Dataset.from_dict(attributions_dict)
+    attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-tokenized-test-50k-exloss-lpad-8k_{rank}")

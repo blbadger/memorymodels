@@ -117,7 +117,7 @@ class VariableMemoryTransformer(nn.Module):
 		self.decoder_proj = None
 
 		if decoder:
-			if not isinstance(decoder, LlamaForCausalLM):
+			if isinstance(decoder, PeftModelForCausalLM):
 				self.decoder = decoder.base_model.model.model
 				self.decoder_wte = decoder.base_model.model.model.embed_tokens
 				self.lm_head = decoder.base_model.model.lm_head
@@ -125,7 +125,6 @@ class VariableMemoryTransformer(nn.Module):
 				self.decoder = decoder.model
 				self.decoder_wte = decoder.model.embed_tokens
 				self.lm_head = decoder.lm_head
-
 		else:
 			llama_config_kwargs = {
 				'hidden_size': dim,

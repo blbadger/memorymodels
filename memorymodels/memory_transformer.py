@@ -117,7 +117,7 @@ class VariableMemoryTransformer(nn.Module):
 		self.decoder_proj = None
 
 		if decoder:
-			if isinstance(decoder, PeftModelForCausalLM):
+			if not isinstance(decoder, LlamaForCausalLM):
 				self.decoder = decoder.base_model.model.model
 				self.decoder_wte = decoder.base_model.model.model.embed_tokens
 				self.lm_head = decoder.base_model.model.lm_head
@@ -206,7 +206,6 @@ class VariableMemoryTransformer(nn.Module):
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
 			
-			shift_labels, shift_logits = labels, output
 			if self.fixed_memory:
 				all_outputs.append(output[..., self.chunks:self.chunks+self.tokenized_length]) # assemble all outputs
 				shift_logits = output[..., self.chunks:self.chunks+self.tokenized_length-1].contiguous()
@@ -217,9 +216,8 @@ class VariableMemoryTransformer(nn.Module):
 			loss = self.cel(shift_logits, shift_labels)
 			if not torch.isnan(loss):
 				total_loss += loss
-
 		if total_loss == 0:
-			total_loss = loss
+			total_loss = loss # if no chunks are valid
 		mean_loss = total_loss / self.chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
 		return mean_loss, all_outputs

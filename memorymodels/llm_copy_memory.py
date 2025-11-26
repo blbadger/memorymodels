@@ -56,8 +56,8 @@ def hamming(model_output, labels):
 	return torch.tensor([average_metric])
 
 def compute_hamming_metric(eval_preds):
-	logits, labels = eval_preds
-	hamming_metric = hamming(logits, labels)
+	preds, labels = eval_preds
+	hamming_metric = hamming(preds, labels)
 	return {'Hamming Distance': hamming_metric}
 
 def preprocess_logits_for_metrics(logits, labels):
@@ -100,7 +100,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(10000).map(tokenize_and_preprocess, num_proc=16)
+train_dataset = load_from_disk(train_path).take(1000000).map(tokenize_and_preprocess, num_proc=16)
 test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
 batch_size = 8
@@ -122,16 +122,18 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=50,
-	eval_steps=100,
-	save_steps=10000,
-	learning_rate=2e-4, 
-	fp16=True,
+	warmup_steps=100,
+	eval_steps=500,
+	logging_steps=500,
+	save_steps=2000,
+	learning_rate=5e-6,
+	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=10000
+	max_steps=100000,
+	save_safetensors=False
 )
 
 trainer = transformers.Trainer(
@@ -152,4 +154,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
+print (trainer.evaluate())
 trainer.train()

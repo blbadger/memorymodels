@@ -106,8 +106,8 @@ class UnrolledAutoencodingTransformer(nn.Module):
                 self.lm_head = nn.Linear(dim, n_vocab, bias=False)
                 self.cel = nn.CrossEntropyLoss()
                 self.tokenized_length = tokenized_length
-                assert dim >= tokenized_length
-                unroll_factor = dim // tokenized_length # assumes dim >= tokenized_length
+                #assert dim >= tokenized_length
+                #unroll_factor = dim // tokenized_length # assumes dim >= tokenized_length
                 self.projection = nn.Linear(dim//2, dim)
                 self.dim = dim
 

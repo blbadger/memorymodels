@@ -113,7 +113,7 @@ class VariableMemoryTransformer(nn.Module):
 		else:
 			self.encoder = None
 
-		self.wte = nn.Embedding(n_vocab, encoder_dim)
+		self.wte = nn.Embedding(n_vocab, encoder_dim) #NB: originally dim, does not matter for frozen encoder
 		self.decoder_proj = None
 
 		if decoder:

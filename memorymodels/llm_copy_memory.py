@@ -92,7 +92,7 @@ compression = 1
 n_layers = 16
 n_heads = 8
 model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-								  fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, decoder=decoder_model)
+								  fixed_memory=True, frozen_encoder=None, no_memory=True, copy=True, decoder=decoder_model)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
@@ -110,7 +110,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_memory_lorallama_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_copy_nomemory_lorallama_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -125,15 +125,16 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=100,
 	eval_steps=500,
 	logging_steps=500,
-	save_steps=2000,
-	learning_rate=5e-6,
+	save_steps=4000,
+	learning_rate=5e-5,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
-	save_safetensors=False
+	save_safetensors=False,
+        #torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -154,5 +155,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-print (trainer.evaluate())
-trainer.train()
+#print (trainer.evaluate())
+trainer.train(output_dir + '/checkpoint-20000')

@@ -113,14 +113,16 @@ model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, 
 #model = LlamaForCausalLM(configuration)
 
 load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-encoder = model.encoder
+encoder = model.encoder.model
 encoder_dim = 512
 decoder_dim = 512
 context_length = 256
 compression = 1 
 n_layers = 16 
 n_heads = 4
-model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=True)
+model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True, blank_copy=False)
+# load the pretrained memory model
+load_model(model, '/home/bbadger/Desktop/fineweb_copy_memtrans_frozenenc_nodecoder_c256x4_512c1_d512_n16_c256_b8x4/checkpoint-100000/model.safetensors')
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
@@ -138,7 +140,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_nodecoder_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_frozenenc_pretraineddec_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -160,7 +162,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=10000
+	max_steps=100000,
 )
 
 trainer = transformers.Trainer(

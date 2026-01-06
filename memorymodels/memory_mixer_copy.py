@@ -91,8 +91,7 @@ safetensors.torch.load_model(encoder, '/home/bbadger/Desktop/fineweb_autoencodin
 
 tokenized_length = 256
 frozen_encoder = TruncatedModel(encoder, autoencoder=True)
-model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, 
-							frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True, encoder_ctx=None)
+model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True, encoder_ctx=None, blank_copy=False)
 
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
@@ -126,7 +125,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memorymixer_nodecoderinfo\
+output_dir = f'{checkpoint_root}/fineweb_memorymixer_frozenenc\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -149,7 +148,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=1000000
+	max_steps=100000
 )
 
 trainer = transformers.Trainer(

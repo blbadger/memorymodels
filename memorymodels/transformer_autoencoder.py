@@ -79,13 +79,13 @@ class AbbreviatedModel(nn.Module):
                         raise TypeError('model type not recognized')
 
                 self.depth = depth
-                self.position_ids = torch.tensor([[i for i in range(tokenized_length)]]).to(device)
+                self.position_ids = torch.tensor([[i for i in range(tokenized_length)]])
 
         def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
                 # 'input_ids' is actually a float tensor, post-wte transformation
                 x = input_ids.to(device)
                 position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
-                position_embeddings = self.model.rotary_emb(x, position_ids)
+                position_embeddings = self.model.rotary_emb(x, position_ids.to(device))
 
                 for i in range(self.depth):
                         x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]

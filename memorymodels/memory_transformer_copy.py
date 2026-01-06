@@ -109,9 +109,10 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+
+import time; time.sleep(10)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 #model = LlamaForCausalLM(configuration)
-
 load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
 encoder = model.encoder.model
 encoder_dim = 512
@@ -133,26 +134,27 @@ datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
-batch_size = 8
+total_batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
-
+batch_per_device = 16
+gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_frozenenc_pretraineddec_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
-_c{context_length}_b{batch_size}x{n_devices}'
+_c{context_length}_b{batch_per_device}x{n_devices}x{gradient_accumulation_steps}'
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=batch_size,
-	per_device_eval_batch_size=batch_size,
-	gradient_accumulation_steps=2,
+	per_device_train_batch_size=batch_per_device,
+	per_device_eval_batch_size=batch_per_device,
+	gradient_accumulation_steps=gradient_accumulation_steps,
 	warmup_steps=50,
 	eval_steps=500,
 	save_steps=10000,
@@ -163,6 +165,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(

@@ -97,8 +97,8 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path).take(10000).map(tokenize_and_preprocess, num_proc=18)
-test_dataset = load_from_disk(test_path).take(4000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
+train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
+test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
 batch_size = 8
 n_devices = 4
@@ -132,7 +132,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=100000,
 	save_safetensors=False,
-        torch_compile=True
+        #torch_compile=True
 )
 
 trainer = transformers.Trainer(

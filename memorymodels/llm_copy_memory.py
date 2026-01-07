@@ -75,6 +75,33 @@ def tokenize_and_preprocess(example):
 	example['attention_mask'] = tokens['attention_mask']
 	return example
 
+encoder_dim = 512
+decoder_dim = 512
+context_length = 256
+compression = 1
+n_layers = 16
+n_heads = 4
+
+vocab_size = len(AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B'))
+llama_config_kwargs = {
+    'hidden_size':encoder_dim,
+    'intermediate_size': 4*encoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size
+}
+print (llama_config_kwargs)
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+safetensors.torch.load_model(model, '/home/azureuser/fineweb_autoencoding_transformer_llamatok_512c1_d512_n16_c256_b64x2/checkpoint-96000/model.safetensors')
+encoder = model.encoder.model
+print (encoder)
+
+
 model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 #decoder_model = lorify_model(model)
@@ -92,7 +119,7 @@ compression = 1
 n_layers = 16
 n_heads = 8
 model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-								  fixed_memory=True, frozen_encoder=None, no_memory=True, copy=True, decoder=decoder_model)
+				fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True, decoder=decoder_model)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
@@ -110,7 +137,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_nomemory_lorallama_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_copy_frozenautomem_lorallama_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -134,7 +161,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=100000,
 	save_safetensors=False,
-        #torch_compile=True
+        torch_compile=False
 )
 
 trainer = transformers.Trainer(
@@ -156,4 +183,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 #print (trainer.evaluate())
-trainer.train(output_dir + '/checkpoint-20000')
+trainer.train()

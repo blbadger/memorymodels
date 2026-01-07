@@ -71,27 +71,31 @@ def corrupt_copy_dataset(input_ids, labels, fraction_corrupted=0.5):
 	and thus we shift entropy estimates left before applying to model outputs.
 	"""
 	n_ctx = len(input_ids[0])
-	all_indices = [i for i in range(n_ctx)]
+	all_indices = [i for i in range(n_ctx//2)]
 	entropies = []
-	corrupt_indices = set(random.sample(all_indices, int((n_ctx//2)*fraction_corrupted)))
-	entropy_array = [0 if i not in corrupt_indices else 9.3 for i in range(n_ctx)] # assumes informationless output for 8k tokenizer
+	corrupt_indices = set(random.sample(all_indices, int(len(all_indices)*fraction_corrupted)))
+	entropy_array = [0 for i in range(n_ctx//2)] + [0 if i not in corrupt_indices else 6.4 for i in range(n_ctx//2)] # assumes informationless output for 8k tokenizer
 	entropies = [torch.tensor(entropy_array) for i in range(input_ids.shape[0])]
-	entropies = torch.stack(entropies, dim=0)[:, 1:].to(device) #shift entropies
+	entropies = torch.stack(entropies, dim=0).to(device)
+	random_values = torch.randint(0, len(tokenizer)-1, entropies.shape).to(device)
+	random_labels = torch.randint(0, len(tokenizer)-1, entropies.shape).to(device)
 	for i, input in enumerate(input_ids):
 		first_half = input[:n_ctx//2]
-		corrupted_half = torch.tensor([i if i not in corrupt_indices else torch.randint(0, len(tokenizer)-1, 1)[0] for i in first_half]).to(device)
+		corrupted_half = torch.where(entropies[0,n_ctx//2:]>0, random_values[0,n_ctx//2:], first_half) 
 		copied_halves = torch.cat((first_half, corrupted_half)).to(torch.long)
 		input_ids[i] = copied_halves
 		
 	n_ctx = len(labels[0])
 	for i, input in enumerate(labels):
 		first_half = input[:n_ctx//2]
+		corrupted_half = torch.where(entropies[0,n_ctx//2:]>0, random_labels[0,n_ctx//2:], first_half)
 		pad_half = torch.ones(first_half.shape).to(device) * -100
-		halves = torch.cat((pad_half, first_half)).to(torch.long)
+		halves = torch.cat((pad_half, corrupted_half)).to(torch.long)
 		labels[i] = halves
 
 	# return all torch tensors
 	return input_ids, labels, entropies
+
 
 class WeightedModel(torch.nn.Module):
 	def __init__(self, model, hidden_dim, tokenizer_size, use_weights=True):
@@ -109,16 +113,17 @@ class WeightedModel(torch.nn.Module):
 
 		shifted_output = model_output[..., :-1]
 		shifted_labels = labels[..., 1:]
+		entropies = entropies[..., 1:]
 		loss = self.cel(shifted_output, shifted_labels)
-		#if 'attribution' in locals() or 'attribution' in globals():
-		weights = torch.abs(loss - entropies) # 10 - attribution # complement of attributions
+		#weights = torch.abs(loss - entropies) # 10 - attribution # complement of attributions
+		weights = torch.where(loss > entropies, loss, 0)
 		if self.model.training and self.use_weights:
 			loss = weights #*2.5 for scaled EEMs # *=weights #weights[..., :-1]
 		nonpad_tokens = torch.sum(attention_mask)
 		loss = torch.sum(loss) / nonpad_tokens
 		return loss, model_output
 		 
-decoder_dim = 512
+decoder_dim = 128
 context_length = 1024
 n_layers = 16
 n_heads = 4
@@ -138,7 +143,8 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 #configuration.save_pretrained('/home/badger/fineweb_l1attr_weighted_transformer_d512_n16_c1024_b32x4/checkpoint-200000')
 # Initializing a model from the llama-7b style configuration
-model = WeightedModel(LlamaModel(configuration).float(), decoder_dim, vocab_size, use_weights=True)
+use_weights = True
+model = WeightedModel(LlamaModel(configuration).float(), decoder_dim, vocab_size, use_weights=use_weights)
 
 total_params = sum(p.numel() for p in model.parameters())
 print(f"Total number of parameters: {total_params}")
@@ -153,16 +159,17 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
-test_dataset = load_from_disk(test_path)
+test_dataset = load_from_disk(test_path).take(50000) #.filter(lambda x: x['input_ids'][-1] != 1).take(50000)
 
 batch_size = 64
-n_devices = 4
+n_devices = 2
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_corrupt_copy_transformer\
+corrupt_suffix = 'entropy' if use_weights else 'noentropy'
+output_dir = f'{checkpoint_root}/fineweb_corrupt_copy_{corrupt_suffix}_transformer\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -173,9 +180,9 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	gradient_accumulation_steps=1,
-	warmup_steps=500,
-	eval_steps=500,
-	save_steps=8000,
+	warmup_steps=50,
+	eval_steps=100,
+	save_steps=10000,
 	learning_rate=2e-4, 
 	fp16=False,
 	bf16=True, 
@@ -183,7 +190,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000
+	max_steps=10000
 )
 
 trainer = transformers.Trainer(

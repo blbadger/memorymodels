@@ -45,16 +45,16 @@ class WeightedModel(torch.nn.Module):
         shifted_labels = labels[..., 1:]
         loss = self.cel(shifted_output, shifted_labels)
         #if 'attribution' in locals() or 'attribution' in globals():
-        weights = torch.abs(loss - attribution) # 10 - attribution # complement of attributions
+        weights = torch.where(attribution < 6., loss, 0) # 10 - attribution # complement of attributions
         if self.model.training and self.use_weights:
-            loss = weights*2.5 #*=weights #weights[..., :-1]
+            loss = weights
         nonpad_tokens = torch.sum(attention_mask)
         loss = torch.sum(loss) / nonpad_tokens
         return loss, model_output
          
-decoder_dim = 512
+decoder_dim = 128
 context_length = 1024
-n_layers = 16
+n_layers = 8
 n_heads = 4
 
 vocab_size = 8000
@@ -64,7 +64,7 @@ llama_config_kwargs = {
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size,
-    'attention_dropout': 0.1
+    'attention_dropout': 0.
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
@@ -82,21 +82,21 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-50k-exloss-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-50k-exloss-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-lossattr-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-lossattr-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(50000)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
 batch_size = 64
-n_devices = 4
+n_devices = 2
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_weighted_transformer_dropout_50k\
+output_dir = f'{checkpoint_root}/fineweb_weighted4_transformer\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -108,7 +108,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=batch_size,
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
-	eval_steps=500,
+	eval_steps=4000,
 	save_steps=8000,
 	learning_rate=2e-4, 
 	fp16=False,
@@ -137,6 +137,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-#trainer.train()
-trainer.train(output_dir + '/checkpoint-132000')
+trainer.train()
 #print (trainer.evaluate())

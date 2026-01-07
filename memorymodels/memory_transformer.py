@@ -113,7 +113,7 @@ class VariableMemoryTransformer(nn.Module):
 		else:
 			self.encoder = None
 
-		self.wte = nn.Embedding(n_vocab, encoder_dim)
+		self.wte = nn.Embedding(n_vocab, encoder_dim) #NB: originally dim, does not matter for frozen encoder
 		self.decoder_proj = None
 
 		if decoder:
@@ -212,6 +212,9 @@ class VariableMemoryTransformer(nn.Module):
 				all_outputs.append(output[..., c:]) # assemble all outputs
 				shift_logits = output[..., c:-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			# only take loss of non-fully-masked blocks
+			if torch.all(shift_labels == -100):
+	 			continue
 			loss = self.cel(shift_logits, shift_labels)
 			if not torch.isnan(loss):
 				total_loss += loss

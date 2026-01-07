@@ -75,21 +75,23 @@ def kernel_dims(weight_vectors):
 	return all_kernels
 
 def plot_weights(weight_vectors):
-	fig, axes = plt.subplots(4, 4, figsize=(8, 8)) # Create a 4x4 grid of subplots
+	fig, axes = plt.subplots(4, 4, figsize=(15, 15)) # Create a 4x4 grid of subplots
 	axes = axes.flatten()
 
 	for i, ax in enumerate(axes):
-		ax.imshow(weight_vectors[i].detach(), cmap='berlin', interpolation='nearest', vmin=-0.3, vmax=0.3)
+		ax.imshow(weight_vectors[i].detach(), cmap='berlin', interpolation='nearest', vmin=-0.2, vmax=0.2)
 		# ax.set_title(f'Layer {i}', fontsize='small')
 		ax.axis('off')
+		plt.tight_layout()
 
 	plt.tight_layout()
-	plt.show()
-	plt.close()
+	# plt.show()
+	# plt.close()
+	plt.savefig('/home/bbadger/Desktop/mrm_cover.png', dpi=400, transparent=True)
 	return
 
-model = load_autoencoder().to('cpu')
-mixer_layers = [model.encoderblocks[i].conv.weight.squeeze(0)[:, :, 0] for i in range(len(model.encoderblocks))]
+model = load_clm().to('cpu')
+mixer_layers = [model.mixerblocks[i].conv.weight.squeeze(0)[:, :, 0] for i in range(len(model.mixerblocks))]
 print (mixer_layers[0].shape)
 plot_weights(mixer_layers)
 print (kernel_dims(mixer_layers))

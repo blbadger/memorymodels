@@ -211,17 +211,11 @@ if __name__ == '__main__':
 	#encoder_model = LlamaModel(configuration)
 	model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False)
 
-<<<<<<< HEAD
 	#model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
 	#model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression)
 	safetensors.torch.load_model(model, f'{checkpoint_root}/fineweb_memtrans_256c4_d512_n16_c1024_b16x4_extended/checkpoint-500000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
 	#model.cel = nn.CrossEntropyLoss(reduction='none')
 	model.eval()
-=======
-	model = AttributableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, transformer_encoder=encoder_model, compression=compression, n_heads=n_heads, random=False) 
-	safetensors.torch.load_model(model, f'{checkpoint_root}/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors', strict=True) # no decoder_input_embeds param in original model
-
->>>>>>> b6dc15a (minor updates)
 	use_ddp = False
 	if not use_ddp:	
 		device_id = 0	
@@ -243,11 +237,7 @@ if __name__ == '__main__':
 	# if you have a new dataset, map before loading from disk
 	datasets.config.IN_MEMORY_MAX_SIZE = 10e9
 	train_dataset = load_from_disk(train_path, keep_in_memory=None)
-<<<<<<< HEAD
-	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(8132)
-=======
 	test_dataset = load_from_disk(test_path, keep_in_memory=None).take(32)
->>>>>>> b6dc15a (minor updates)
 
 	n_gpus = torch.cuda.device_count()
 	dataset_length = len(test_dataset)

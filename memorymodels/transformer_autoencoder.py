@@ -85,8 +85,7 @@ class AbbreviatedModel(nn.Module):
                 # 'input_ids' is actually a float tensor, post-wte transformation
                 x = input_ids.to(device)
                 position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
-                position_embeddings = self.model.rotary_emb(x, position_ids.to(device))
-
+                position_embeddings = self.model.rotary_emb(x, position_ids)
                 for i in range(self.depth):
                         x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
                 return x
@@ -94,7 +93,7 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
        
-        def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
@@ -103,14 +102,17 @@ class UnrolledAutoencodingTransformer(nn.Module):
                                 param.requires_grad = False
 
                 self.decoder = decoder_model
-                self.lm_head = nn.Linear(dim, n_vocab, bias=False)
                 self.cel = nn.CrossEntropyLoss()
                 self.tokenized_length = tokenized_length
-                #assert dim >= tokenized_length
-                #unroll_factor = dim // tokenized_length # assumes dim >= tokenized_length
-                self.projection = nn.Linear(dim//2, dim)
                 self.dim = dim
-
+                self.bridge_proj = None
+                if decoder_dim and decoder_dim != dim:
+                    self.bridge_proj = nn.Linear(dim, decoder_dim)
+                    self.decoder_dim = decoder_dim
+                else:
+                    decoder_dim = dim
+                self.projection = nn.Linear(decoder_dim//2, decoder_dim)
+                self.lm_head = nn.Linear(decoder_dim, n_vocab, bias=False)
                 self.compression = False
                 if compression > 1:
                         self.compression = True
@@ -127,9 +129,14 @@ class UnrolledAutoencodingTransformer(nn.Module):
                         x = input_ids
                 x = x.to(device).squeeze(1)
                 x = self.wte(x)
-                x = self.encoder(x)
-
+                if isinstance(self.encoder, AbbreviatedModel):
+                    x = self.encoder(x)
+                else:
+                    x = self.encoder(inputs_embeds=x, attention_mask=attention_mask).last_hidden_state
                 encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
+                if self.bridge_proj:
+                    encoder_embedding = self.bridge_proj(encoder_embedding)
+                    self.dim = self.decoder_dim
                 if self.compression:
                         encoder_embedding = self.down(encoder_embedding)
                         encoder_embedding = self.up(encoder_embedding)
@@ -145,8 +152,12 @@ class UnrolledAutoencodingTransformer(nn.Module):
                         embedding_stack.append(sliding_window)
                 encoder_embedding = torch.cat(embedding_stack, dim=1)
                 encoder_embedding = self.projection(encoder_embedding)
+
                 x = encoder_embedding
-                x = self.decoder(x)
+                if isinstance(self.decoder, AbbreviatedModel):
+                    x = self.decoder(x)
+                else:
+                    x = self.decoder(inputs_embeds=x).last_hidden_state
 
                 output = self.lm_head(x)
                 output = rearrange(output, 'b t e -> b e t')

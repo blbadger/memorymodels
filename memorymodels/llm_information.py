@@ -121,10 +121,10 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=100,
-	eval_steps=40000,
+	eval_steps=4000,
 	logging_steps=500,
 	save_steps=8000,
-	learning_rate=2e-5,
+	learning_rate=1e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -132,7 +132,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=100000,
 	save_safetensors=False,
-        #torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(

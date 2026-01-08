@@ -65,27 +65,28 @@ def tokenize_and_preprocess(example):
 	return example
 
 # encoder configuration and load
-encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
-tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
+encoder_model = AutoModel.from_pretrained('Qwen/Qwen3-0.6B')
+tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen3-0.6B')
 
 vocab_size = len(tokenizer)
 context_length = 512
 encoder_dim = 1024
 decoder_dim = 1024
-n_layers = 24
+n_layers = 28
 n_heads = 16
 bert_config_kwargs = { 
     'hidden_size': decoder_dim,
-    'intermediate_size': 4*decoder_dim,
+    'intermediate_size': 3*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
     'vocab_size': vocab_size,
-    'max_position_embeddings': context_length
+    "num_key_value_heads": 8,
+    "head_dim": 128
 }
 
 # decoder configuration
-configuration = BertConfig(**bert_config_kwargs)
-decoder_model = BertModel(configuration)
+configuration = Qwen3Config(**bert_config_kwargs)
+decoder_model = Qwen3Model(configuration)
 
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
@@ -106,7 +107,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_bertlarge_information\
+output_dir = f'{checkpoint_root}/fineweb_qwen3_information\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -121,7 +122,7 @@ training_arguments = transformers.TrainingArguments(
 	eval_steps=4000,
 	logging_steps=500,
 	save_steps=8000,
-	learning_rate=5e-5,
+	learning_rate=2e-5,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -129,7 +130,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=200000,
 	save_safetensors=False,
-        torch_compile=True
+#        torch_compile=True
 )
 
 trainer = transformers.Trainer(

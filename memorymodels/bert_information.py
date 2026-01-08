@@ -8,7 +8,7 @@ import mlflow
 
 from datasets import load_dataset, load_from_disk
 import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel
+from transformers import AutoModel, AutoTokenizer, BertConfig, BertModel
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -58,13 +58,14 @@ def preprocess_logits_for_metrics(logits, labels):
 
 def tokenize_and_preprocess(example):
 	text = example['text']
-	tokens = tokenizer(text, max_length=1024, padding='max_length', truncation=True) # return list, not tensor
+	global context_length
+	tokens = tokenizer(text, max_length=context_length, padding='max_length', truncation=True) # return list, not tensor
 	example['input_ids'] = tokens['input_ids']
 	example['attention_mask'] = tokens['attention_mask']
 	return example
 
 # encoder configuration and load
-encoder_model = AutoModelForCausalLM.from_pretrained('google-bert/bert-large-uncased')
+encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
 tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
 
 vocab_size = len(tokenizer)
@@ -83,7 +84,7 @@ bert_config_kwargs = {
 }
 
 # decoder configuration
-configuration = BertConfig(**llama_config_kwargs)
+configuration = BertConfig(**bert_config_kwargs)
 decoder_model = BertModel(configuration)
 
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
@@ -95,19 +96,18 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
+train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=32)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 16
+batch_size = 32
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_llama1b_information\
+output_dir = f'{checkpoint_root}/fineweb_bertlarge_information\
 _{encoder_dim}\
-_\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -127,9 +127,9 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=100000,
+	max_steps=200000,
 	save_safetensors=False,
-      #torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -150,4 +150,4 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+trainer.train(output_dir + '/checkpoint-16000')

@@ -8,7 +8,7 @@ import mlflow
 
 from datasets import load_dataset, load_from_disk
 import transformers
-from transformers import AutoModel, AutoTokenizer, BertConfig, BertModel
+from transformers import AutoModel, AutoTokenizer, BertConfig, BertModel, LlamaConfig, LlamaModel
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -69,7 +69,7 @@ encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
 tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
 
 vocab_size = len(tokenizer)
-context_length = 512
+context_length = 16
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 24
@@ -87,6 +87,23 @@ bert_config_kwargs = {
 configuration = BertConfig(**bert_config_kwargs)
 decoder_model = BertModel(configuration)
 
+decoder_dim = 512
+n_layers = 16
+n_heads = 4 
+llama_config_kwargs = { 
+    'hidden_size': decoder_dim,
+    'intermediate_size': 4*decoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size,
+    'max_position_embeddings': context_length
+}
+print (llama_config_kwargs)
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+decoder_model = LlamaModel(configuration)
+
+# unrolled embedding transformer autoencoder
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
 print (model)
@@ -99,14 +116,14 @@ datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=32)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 32
+batch_size = 2048
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_bertlarge_information\
+output_dir = f'{checkpoint_root}/fineweb_bertlarge_information_frozenwte\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -121,7 +138,7 @@ training_arguments = transformers.TrainingArguments(
 	eval_steps=4000,
 	logging_steps=500,
 	save_steps=8000,
-	learning_rate=2e-5,
+	learning_rate=2e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -150,4 +167,4 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train(output_dir + '/checkpoint-16000')
+trainer.train()

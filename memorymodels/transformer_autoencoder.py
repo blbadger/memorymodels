@@ -128,11 +128,12 @@ class UnrolledAutoencodingTransformer(nn.Module):
                 else:
                         x = input_ids
                 x = x.to(device).squeeze(1)
-                x = self.wte(x)
                 if isinstance(self.encoder, AbbreviatedModel):
+                    x = self.wte(x)
                     x = self.encoder(x)
                 else:
-                    x = self.encoder(inputs_embeds=x, attention_mask=attention_mask).last_hidden_state
+                    x = self.encoder(x).last_hidden_state
+                    #x = self.encoder(inputs_embeds=x, attention_mask=attention_mask).last_hidden_state
                 encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
                 if self.bridge_proj:
                     encoder_embedding = self.bridge_proj(encoder_embedding)

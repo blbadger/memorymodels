@@ -59,7 +59,8 @@ def preprocess_logits_for_metrics(logits, labels):
 
 def tokenize_and_preprocess(example):
 	text = example['text']
-	tokens = tokenizer(text, max_length=1024, padding='max_length', truncation=True) # return list, not tensor
+	global context_length
+	tokens = tokenizer(text, max_length=context_length, padding='max_length', truncation=True) # return list, not tensor
 	example['input_ids'] = tokens['input_ids']
 	example['attention_mask'] = tokens['attention_mask']
 	return example
@@ -68,9 +69,9 @@ model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 
 vocab_size = len(tokenizer)
-context_length = 1024
+context_length = 16
 encoder_dim = 2048
-decoder_dim = 1024
+decoder_dim = 512
 n_layers = 16
 n_heads = 4
 llama_config_kwargs = { 
@@ -100,17 +101,17 @@ datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 8
-n_devices = 4
+global_batch_size = 32768 // context_length
+n_devices = 2
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
+batch_size = global_batch_size // n_devices
 
 encoder_dim = 2048
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_llama1b_information\
+output_dir = f'{checkpoint_root}/fineweb_llama1b_frozenwte_information\
 _{encoder_dim}\
-_\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -123,14 +124,14 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=100,
 	eval_steps=4000,
 	logging_steps=500,
-	save_steps=8000,
-	learning_rate=1e-4,
+	save_steps=20000,
+	learning_rate=2e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=100000,
+	max_steps=200000,
 	save_safetensors=False,
         torch_compile=True
 )

@@ -11,7 +11,8 @@ from mixer_autoencoder import MixerBlock
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def copy_dataset(input_ids, blank_copy=False):
+def copy_dataset(inputs, blank_copy=False):
+        input_ids = torch.clone(inputs) # to avoid in-place modification
         n_ctx = len(input_ids[0])
         for i, input in enumerate(input_ids):
                 first_half = input[:n_ctx//2]
@@ -22,7 +23,8 @@ def copy_dataset(input_ids, blank_copy=False):
                 input_ids[i] = copied_halves
         return input_ids
 
-def copy_labels(labels):
+def copy_labels(label_arr):
+	labels = torch.clone(label_arr) # to avoid in-place modification
 	n_ctx = len(labels[0])
 	for i, input in enumerate(labels):
 		first_half = input[:n_ctx//2]
@@ -297,12 +299,17 @@ class ObjectiveMemoryTransformer(nn.Module):
 		all_inputs = []
 		if self.objective != 'clm':
 			copy_input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy)
+			# copy delimiter for training with mixed objective
+			copy_input_ids[:, len(input_ids[0])//2:len(input_ids[0])//2 + 3] = torch.ones(copy_input_ids.shape[0], 3) * 100
 			if labels is not None:
-				copy_labels = copy_labels(labels) # masks first half
+				copy_label_arr = copy_labels(labels) # masks first half
+				copy_label_arr[:, len(input_ids[0])//2-1:len(input_ids[0])//2 + 2]  = torch.ones(copy_input_ids.shape[0], 3) * -100
 			if self.objective == 'combined':
 				all_inputs = [[input_ids, labels]]
-			all_inputs.append([copy_input_ids, copy_labels])
-
+			all_inputs.append([copy_input_ids, copy_label_arr])
+		else:
+			all_inputs = [[input_ids, labels]]
+		
 		total_loss = 0
 		for input_ids, labels in all_inputs:
 			# generate encoder embeddings

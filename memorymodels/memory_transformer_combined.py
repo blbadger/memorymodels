@@ -22,7 +22,7 @@ from pathlib import Path
 
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
-from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
+from memory_transformer import VariableMemoryTransformer, MemoryTransformer, ObjectiveMemoryTransformer 
 
 warnings.filterwarnings(action='ignore')
 
@@ -134,8 +134,8 @@ model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, 
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 3e9
@@ -143,11 +143,11 @@ train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
 total_batch_size = 64
-n_devices = 4
+n_devices = 2
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
-batch_per_device = 8
+batch_per_device = 32
 gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_combined_memtrans_c256x4\
@@ -173,7 +173,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
-    torch_compile=True
+        #torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -194,7 +194,7 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+trainer.train(output_dir)
 
 model.objective = 'copy'
 print (f'Evaluating Copy Accuracy:')

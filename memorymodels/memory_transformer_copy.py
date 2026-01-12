@@ -20,6 +20,7 @@ import shutil
 from dotenv import load_dotenv
 from pathlib import Path
 
+from hamming_drivers.memory_transformer import VariableMemoryTransformer as OrigVarMemTransformer
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
@@ -118,15 +119,18 @@ print (llama_config_kwargs)
 #load_model(model, '/home/bbadger/Desktop/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 #encoder = model.model
 
-encoder_dim = 512
+encoder_dim = 256
 decoder_dim = 512
 context_length = 256
-compression = 1 
-n_layers = 16 
+compression = 1
+n_layers = 16
 n_heads = 4
-model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
+model = OrigVarMemTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
 # load the pretrained memory model
-#load_model(model, '/home/bbadger/Desktop/fineweb_copy_memtrans_frozenenc_nodecoder_c256x4_512c1_d512_n16_c256_b8x4/checkpoint-100000/model.safetensors')
+load_model(model, '/home/azureuser/fineweb_memorytrans_256x4_256c1_d512_n16_c256_b64x2/checkpoint-200000/model.safetensors')
+
+encoder = model.encoder
+model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True, blank_copy=True)
 
 # no memory control
 #print (model.no_memory)
@@ -135,8 +139,8 @@ model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, c
 #print (model.no_memory)
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 3e9
@@ -144,14 +148,14 @@ train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
 total_batch_size = 64
-n_devices = 4
+n_devices = 2
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 batch_per_device = 8
 gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_frozenmemenc_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

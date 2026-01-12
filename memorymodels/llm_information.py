@@ -69,7 +69,7 @@ model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 
 vocab_size = len(tokenizer)
-context_length = 16
+context_length = 64
 encoder_dim = 2048
 decoder_dim = 512
 n_layers = 16

@@ -44,7 +44,7 @@ def hamming(model_output, labels):
 	return torch.tensor([average_metric])
 
 def compute_hamming_metric(eval_preds):
-	preds, labels = eval_preds; print (preds, labels)
+	preds, labels = eval_preds
 	hamming_metric = hamming(preds, labels)
 	return {'Hamming Distance': hamming_metric}
 

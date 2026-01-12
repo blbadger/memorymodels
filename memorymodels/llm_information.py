@@ -33,23 +33,12 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-def lorify_model(model):
-	lora_config = LoraConfig(
-	    r=64,
-	    target_modules=["q_proj", "v_proj", "k_proj", "up_proj", "down_proj", "gate_proj", "up_proj", "down_proj"],
-	    task_type=TaskType.CAUSAL_LM,
-	    lora_alpha=32,
-	    lora_dropout=0.
-	)
-	model = get_peft_model(model, lora_config)
-	return model
-
 @torch.no_grad()
 def hamming(model_output, labels):
 	total_metric = 0
-	# assign and shift outputs and labels
-	labels= torch.tensor(labels)[..., 1:]
-	model_output = torch.tensor(model_output[0])[..., :-1]
+	# no shift for autoencoders
+	labels= torch.tensor(labels)
+	model_output = torch.tensor(model_output[0])
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
@@ -75,60 +64,41 @@ def tokenize_and_preprocess(example):
 	example['attention_mask'] = tokens['attention_mask']
 	return example
 
-encoder_dim = 512
-decoder_dim = 512
-context_length = 256
-compression = 1
+model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
+tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
+
+vocab_size = len(tokenizer)
+context_length = 1024
+encoder_dim = 2048
+decoder_dim = 1024
 n_layers = 16
 n_heads = 4
-
-vocab_size = len(AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B'))
-llama_config_kwargs = {
-    'hidden_size':encoder_dim,
-    'intermediate_size': 4*encoder_dim,
+llama_config_kwargs = { 
+    'hidden_size': decoder_dim,
+    'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
     'num_attention_heads': n_heads,
-    'vocab_size': vocab_size
+    'vocab_size': vocab_size,
+    'max_position_embeddings': context_length
 }
 print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
-safetensors.torch.load_model(model, '/home/azureuser/fineweb_autoencoding_transformer_llamatok_512c1_d512_n16_c256_b64x2/checkpoint-96000/model.safetensors')
-encoder = model.encoder.model
-print (encoder)
-
-
-model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
-tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
-#decoder_model = lorify_model(model)
-decoder_model = model
-print (decoder_model)
-
-
-#tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer) #128k for llama 3.2
-encoder_dim = 512
-decoder_dim = 2048
-context_length = 256
-compression = 1
-n_layers = 16
-n_heads = 8
-model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, 
-				fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True, decoder=decoder_model)
+# unrolled embedding transformer autoencoder
+encoder_model = model.model
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = LlamaModel(configuration)
+model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
 
 # load datasets and duplicate entries
-datasets.config.IN_MEMORY_MAX_SIZE = 35e9
-train_dataset = load_from_disk(train_path).take(1000000).map(tokenize_and_preprocess, num_proc=16)
-test_dataset = load_from_disk(test_path).take(5000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
+datasets.config.IN_MEMORY_MAX_SIZE = 5e9
+train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
+test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
 batch_size = 8
 n_devices = 4
@@ -136,10 +106,11 @@ n_devices = 4
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
+encoder_dim = 2048
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_frozenautomem_lorallama_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_llama1b_information\
 _{encoder_dim}\
-c{compression}\
+_\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -150,10 +121,10 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=100,
-	eval_steps=500,
+	eval_steps=4000,
 	logging_steps=500,
-	save_steps=4000,
-	learning_rate=5e-5,
+	save_steps=8000,
+	learning_rate=1e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -161,7 +132,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=100000,
 	save_safetensors=False,
-        torch_compile=False
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -182,5 +153,4 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-#print (trainer.evaluate())
 trainer.train()

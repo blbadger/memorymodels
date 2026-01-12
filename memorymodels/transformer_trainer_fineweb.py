@@ -29,14 +29,14 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
-encoder_dim = 256
+encoder_dim = 512
 decoder_dim = 512
 context_length = 256
 compression = 1
 n_layers = 16
 n_heads = 4
 
-vocab_size = 8000
+vocab_size = len(AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B'))
 llama_config_kwargs = {
     'hidden_size':encoder_dim,
     'intermediate_size': 4*encoder_dim,
@@ -71,9 +71,9 @@ model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers
 #model = MemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, compression=compression, transformer_encoder=encoder_model, n_heads=n_heads, noise_embedding=False)
 
 # unrolled embedding transformer autoencoder
-#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
@@ -104,8 +104,15 @@ print (model)
 # RMT
 #model = RecurrentMemoryTransformer(vocab_size, decoder_dim, n_layers, context_length, n_heads=4, n_chunks=4)
 
+def tokenize_and_preprocess(example):
+        text = example['text']
+        tokens = tokenizer(text, max_length=256, padding='max_length', truncation=True) # return list, not tensor
+        example['input_ids'] = tokens['input_ids']
+        example['attention_mask'] = tokens['attention_mask']
+        return example
 
-tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+#tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
@@ -126,6 +133,9 @@ print (len(train_dataset[0]['input_ids']))
 
 batch_size = 16
 n_devices = 4
+#train_dataset = load_from_disk(train_path).take(1000000).map(tokenize_and_preprocess, num_proc=16)
+#test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
+
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()

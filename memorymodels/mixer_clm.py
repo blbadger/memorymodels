@@ -96,6 +96,12 @@ class MixerBlock(nn.Module):
 				self.conv = nn.Conv1d(length, length, kernel, padding='same')
 		self.expand_conv = expand_conv
 
+	@torch.compiler.disable
+	def mask_weight(self):
+		masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
+		self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
+		
+
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
@@ -177,7 +183,6 @@ class MLPMixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		self.conv = nn.Linear(length, length)
 
-
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
@@ -197,19 +202,31 @@ class MLPMixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length, tie_weights=False, n_heads=0, kernel=1):
+	def __init__(self, n_vocab, dim, depth, length, tie_weights=False, n_heads=0, kernel=1, torch_compile=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
-		self.mixerblocks = nn.ModuleList(
-			[MixerBlock(
-				dim = dim,
-				length = length,
-				expand_conv = False,
-				n_heads = n_heads,
-				kernel = kernel
+		if torch_compile:
+			self.mixerblocks = nn.ModuleList(
+				[MLPMixerBlock(
+					dim = dim,
+					length = length,
+					expand_conv = False,
+					n_heads = n_heads,
+					kernel = kernel
 				)
-			for i in range(depth)]
-			)
+				for i in range(depth)]
+				)
+		else:
+			self.mixerblocks = nn.ModuleList(
+				[MixerBlock(
+					dim = dim,
+					length = length,
+					expand_conv = False,
+					n_heads = n_heads,
+					kernel = kernel
+					)
+				for i in range(depth)]
+				)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
 			self.wte.weight = self.lm_head.weight

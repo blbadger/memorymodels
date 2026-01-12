@@ -46,7 +46,7 @@ class MixerHead(nn.Module):
 		self.proj_head = nn.ModuleList(
 			[nn.Linear(dim, hidden_dim)
 			for i in range(n_heads)]
-			).to(device)
+			)
 
 		self.convs = nn.ModuleList(
 			[nn.Conv1d(length, length, kernel, padding='same')
@@ -59,7 +59,6 @@ class MixerHead(nn.Module):
 		for i in range(len(self.convs)):
 			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
 		hidden_layer = []
 
 		for head in range(self.n_heads):
@@ -93,12 +92,10 @@ class MixerBlock(nn.Module):
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
-
 		if self.causal and not self.multiheaded:
 			# for CLM training, apply lower triangular mask to convolution weights
 			masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
 			self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
 		residual = x
 		x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
@@ -123,7 +120,7 @@ class AutoencodingMixer(nn.Module):
 			# enforce no grad on encoder
 			for _, param in frozen_encoder.named_parameters():
 				param.requires_grad = False
-			self.encoderblocks = frozen_encoder.model_blocks.to(device)
+			self.encoderblocks = frozen_encoder.model_blocks
 			#self.wte = frozen_encoder.model_wte.to(device)
 		else:
 			self.encoderblocks = nn.ModuleList(
@@ -135,7 +132,7 @@ class AutoencodingMixer(nn.Module):
 				kernel = kernel
 				)
 			for i in range(depth)]
-			).to(device)
+			)
 	
 		self.decoderblocks = nn.ModuleList(
 			[MixerBlock(
@@ -321,7 +318,7 @@ class VariableMemoryMixer(nn.Module):
 					kernel = kernel
 					)
 				for i in range(depth)]
-			).to(device)
+			)
 
 		self.decoder_proj = None
 		self.decoderblocks = nn.ModuleList(
@@ -333,7 +330,7 @@ class VariableMemoryMixer(nn.Module):
 					kernel = 1  # unitary kernel
 					)
 				for i in range(depth)]
-			).to(device)
+			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if encoder_dim != dim:
 			self.decoder_proj = nn.Linear(encoder_dim, dim)
@@ -367,7 +364,7 @@ class VariableMemoryMixer(nn.Module):
 			embedding_array = [torch.zeros((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.n_chunks)]
 		while input_ids.shape[1] - self.tokenized_length > i:
 			x = input_ids[:, i: i+self.tokenized_length]
-			if self.encoder_ctx is not None:
+			if self.encoder_ctx:
 				pad_length = self.encoder_ctx - x.shape[-1]
 				pad = torch.ones((input_ids.shape[0], pad_length), dtype=torch.long).to(x.device) # assumes pad id is 1
 				x = torch.cat((x, pad), dim=-1)
@@ -384,7 +381,7 @@ class VariableMemoryMixer(nn.Module):
 			decoder_embeds = self.decoder_wte(input_ids)
 			embedding_array.append(encoder_embedding)
 			i += self.tokenized_length
-
+		
 		# embedding_array now stores length // n_ctx - 1 embeddings
 		input_embeddings = self.decoder_wte(input_ids)
 		total_loss = 0
@@ -392,7 +389,7 @@ class VariableMemoryMixer(nn.Module):
 		for c in range(self.n_chunks):
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 			pad = torch.zeros((input_ids.shape[0], self.n_chunks-c, input_embeddings.shape[2])).to(device)
-			x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1) # concatenation on token dim
+			x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1).contiguous() # concatenation on token dim
 			for block in self.decoderblocks:
 				x = block(x)
 			
@@ -404,6 +401,8 @@ class VariableMemoryMixer(nn.Module):
 			shift_labels, shift_logits = labels, output
 			shift_logits = output[..., self.n_chunks:self.n_chunks+self.tokenized_length-1].contiguous() # first c 'tokens' are encoding
 			shift_labels = labels[..., (c*self.tokenized_length)+1:(c+1)*(self.tokenized_length)].contiguous()
+			if torch.all(shift_labels == -100):
+				continue
 			loss = self.cel(shift_logits, shift_labels)
 			if not torch.isnan(loss):
 				total_loss += loss

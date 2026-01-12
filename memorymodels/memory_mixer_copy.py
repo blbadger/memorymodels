@@ -21,6 +21,7 @@ from mixer_autoencoder import TruncatedModel, RecurrentMemoryMixer
 import warnings
 from dotenv import load_dotenv
 import pathlib
+
 load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
@@ -93,13 +94,17 @@ tokenized_length = 256
 frozen_encoder = TruncatedModel(encoder, autoencoder=True)
 model = VariableMemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=1, frozen_encoder=frozen_encoder, n_heads=heads, kernel=kernel, n_chunks=4, no_memory=False, copy=True, encoder_ctx=None, blank_copy=False)
 
+# load blank copy -trained model
+safetensors.torch.load_model(model, '/home/bbadger/Desktop/fineweb_memorymixer_nodecoderinfo_512c1_d512_n16_c256_b16x4/checkpoint-100000/model.safetensors')
+
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 #encoder = model.encoder
 #model = FrozenMemoryMixer(n_vocab, encoder, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='token', n_heads=heads, kernel=kernel)
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
-print (model)
+model.no_memory = True
+print (f"Uses no memory: {model.no_memory}")
 print (model)
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
@@ -125,7 +130,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memorymixer_frozenenc\
+output_dir = f'{checkpoint_root}/fineweb_copy_nomemmix_frozenenc_pretraineddec\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -136,23 +141,23 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=50,
+	warmup_steps=500,
 	eval_steps=500,
 	save_steps=20000,
 	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
 	fp16=True,
-	bf16=False,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=100000
+	max_steps=100000,
+#        torch_compile=True
 )
 
 trainer = transformers.Trainer(
-	model=model.to(device),
+	model=model,
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments,

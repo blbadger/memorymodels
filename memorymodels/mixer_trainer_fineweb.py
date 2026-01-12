@@ -40,7 +40,7 @@ decoder_dim = 512
 n_layers = 16
 compression = 1
 heads = 0
-kernel = 4
+kernel = 1
 
 class modelwrap(nn.Module):
 
@@ -55,7 +55,7 @@ class modelwrap(nn.Module):
 #model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
 
-#encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
+model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, torch_compile=True).float().to(device)
 #encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
 #safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
 #encoder = encoder.model
@@ -80,7 +80,7 @@ class modelwrap(nn.Module):
 #frozen_encoder = encoder.encoderblocks
 #frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
 
-model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
+#model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=True, random=False, frozen_encoder=None, clm_encoder=False)
 #model = AutoencodingTransfixer(n_vocab, encoder_dim, n_layers, tokenized_length, use_transformer_encoder=False).float()
 #model = MemoryMixer(n_vocab, encoder_dim, decoder_dim, n_layers, tokenized_length, compression=compression, combination_dim='embedding', n_heads=0, kernel=kernel).float()
 
@@ -110,14 +110,14 @@ def get_chunk(example):
 
 mlflow.end_run()
 
-batch_size = 16
+batch_size = 4
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoding_mixer\
+output_dir = f'{checkpoint_root}/fineweb_test\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -140,7 +140,8 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=200000
+	max_steps=200000,
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(

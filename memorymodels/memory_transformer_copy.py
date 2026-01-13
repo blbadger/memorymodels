@@ -64,6 +64,7 @@ def load_encoder():
 
 @torch.no_grad()
 def hamming(model_output, labels):
+	print (labels)
 	total_metric = 0
 	# assign and shift outputs and labels
 	labels= torch.tensor(labels)[..., 1:]
@@ -141,14 +142,14 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 3e9
 train_dataset = load_from_disk(train_path)
-test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
+test_dataset = load_from_disk(test_path).take(100).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
-total_batch_size = 64
+total_batch_size = 4
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
-batch_per_device = 8
+batch_per_device = 1
 gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_c256x4\
@@ -157,7 +158,7 @@ c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_per_device}x{n_devices}x{gradient_accumulation_steps}'
-
+output_dir = '/home/bbadger/Desktop/test'
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
@@ -174,7 +175,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
-        torch_compile=True
+        #torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -195,5 +196,9 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
+model.copy = True
+trainer.evaluate()
 
+model.copy = False
+trainer.evaluate()
 trainer.train()

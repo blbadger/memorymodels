@@ -44,7 +44,7 @@ def hamming(model_output, labels):
 	return torch.tensor([average_metric])
 
 def compute_hamming_metric(eval_preds):
-	preds, labels = eval_preds; print (preds, labels)
+	preds, labels = eval_preds
 	hamming_metric = hamming(preds, labels)
 	return {'Hamming Distance': hamming_metric}
 
@@ -69,7 +69,7 @@ encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
 tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
 
 vocab_size = len(tokenizer)
-context_length = 16
+context_length = 256
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 24
@@ -117,7 +117,8 @@ train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
 total_batch_size = 32768 // context_length
-n_devices = 4
+n_devices = 2
+
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()

@@ -68,9 +68,9 @@ model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 
 vocab_size = len(tokenizer)
-context_length = 1024
+context_length = 512
 encoder_dim = 2048
-decoder_dim = 1024
+decoder_dim = 512
 n_layers = 16
 n_heads = 4
 llama_config_kwargs = { 
@@ -92,15 +92,15 @@ decoder_model = LlamaModel(configuration)
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
+train_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 8
+batch_size = 2048
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -108,7 +108,7 @@ if torch.cuda.is_available():
 
 encoder_dim = 2048
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_llama1b_information\
+output_dir = f'{checkpoint_root}/fineweb_llama1b_information_frozenwte\
 _{encoder_dim}\
 _\
 _d{decoder_dim}\
@@ -130,7 +130,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=100000,
+	max_steps=200000,
 	save_safetensors=False,
         torch_compile=True
 )

@@ -1,0 +1,191 @@
+import torch
+from einops import rearrange
+import transformers
+from transformers import LlamaConfig, LlamaForCausalLM, AutoTokenizer
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoTokenizer
+from safetensors.torch import load_model, safe_open
+import random
+import threading
+from ..transformer_autoencoder import UnrolledAutoencodingTransformer
+import os
+from dotenv import load_dotenv
+
+class RetrievalTransformer(nn.Module):
+
+	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
+		super().__init__()
+		self.model = model
+		self.ngram_size = ngram_size
+		self.pad_token_id = pad_token_id
+
+	def select_ngram(self, input_ids):
+		# expects inputs to be of shape [b, t]
+		sample_index = random.randint(1, input_ids.shape[0]) # the first sample will be replaced with the input
+		ngram_index = random.randint(0, input_ids.shape[1] - ngram_size)
+		sample_ngram = input_ids[sample_index, ngram_index: ngram_index + ngram_size]
+		return sample_index, sample_ngram
+
+	def forward(self, input_ids, attention_mask, labels=None, **kwargs):
+		input_ids
+		if self.prebatched:
+			input_ids = input_ids.squeeze(0) # p b t -> b t
+		matching_index, sample_ngram = self.select_ngram(input_ids)
+		pad_ngram = (torch.ones(input_ids.shape[1] - ngram_size) * self.pad_token_id).to(torch.long)
+		pad_attention = torch.zeros
+		if padding_side == 'right':
+			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
+			attention_ngram = torch.cat((torch.ones(ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - ngram_size, dtype=torch.long)), dim=0)
+		elif padding_side == 'left':
+			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
+			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - ngram_size, dtype=torch.long), torch.ones(ngram_size, dtype=torch.long)), dim=0)
+
+		input_ids[0] = sample_ngram # zeroth batch element is the query phrase
+		attention_mask[0] = attention_ngram
+		x = self.model(input_ids, attention_mask).last_hidden_state
+		embedding_indices = -1
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
+		return loss, model_output
+
+
+class RetrievalAutoencoderTransformer(nn.Module):
+
+	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
+		super().__init__()
+		self.model = model.encoder.model
+		self.wte = model.wte
+		self.ngram_size = ngram_size
+		self.pad_token_id = pad_token_id
+
+	def select_ngram(self, input_ids):
+		# expects inputs to be of shape [b, t]
+		sample_index = random.randint(1, input_ids.shape[0]) # the first sample will be replaced with the input
+		ngram_index = random.randint(0, input_ids.shape[1] - ngram_size)
+		sample_ngram = input_ids[sample_index, ngram_index: ngram_index + ngram_size]
+		return sample_index, sample_ngram
+
+	def forward(self, input_ids, attention_mask, labels=None, **kwargs):
+		input_ids
+		if self.prebatched:
+			input_ids = input_ids.squeeze(0) # p b t -> b t
+		matching_index, sample_ngram = self.select_ngram(input_ids)
+		pad_ngram = (torch.ones(input_ids.shape[1] - ngram_size) * self.pad_token_id).to(torch.long)
+		pad_attention = torch.zeros
+		if padding_side == 'right':
+			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
+			attention_ngram = torch.cat((torch.ones(ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - ngram_size, dtype=torch.long)), dim=0)
+		elif padding_side == 'left':
+			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
+			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - ngram_size, dtype=torch.long), torch.ones(ngram_size, dtype=torch.long)), dim=0)
+
+		input_ids[0] = sample_ngram # zeroth batch element is the query phrase
+		attention_mask[0] = attention_ngram
+		x = self.wte(input_ids)
+		x = self.model(inputs_embeds=x, attention_mask=attention_mask).last_hidden_state
+		embedding_indices = -1
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
+		return loss, model_output
+
+
+def infoNCEloss(output, matching_index=None, embedding_index=-2, temp=0.02):
+	"""
+	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
+	the rest are negative samples.
+
+	args:
+		output: torch.tensor, shape [batch, token, embedding]
+
+	kwargs:
+		matching_index: Optional[None, int], integer index of correct retrieval match
+		embedding_index: Union[int, arr[int]], index or indicies of the last non-pad token
+	"""
+	if not isinstance(embedding_index, int):
+		query_embedding = output[0, embedding_index[0], :].unsqueeze(0)
+		match_embedding = output[matching_index, embedding_index[matching_index], :]
+		other_embeddings = []
+		for i in range(1, matching_index):
+			other_embeddings.append(output[i, embedding_index[i], :])
+		for i in range(matching_index+1, len(output)):
+			other_embeddings.append(output[i, embedding_index[i], :])
+		nonmatch_embeddings = torch.stack(other_embeddings)
+
+	else:
+		query_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
+		match_embedding = output[matching_index, embedding_index, :]
+		nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
+
+	cosine_sim = torch.nn.CosineSimilarity(dim=1)
+	codists = torch.exp((1/temp)*cosine_sim(query_embedding, match_embedding)) # temperature=0.01
+	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(query_embedding, nonmatch_embeddings)))
+	loss = -torch.sum(torch.log(codists / (codists + nondists)))
+	return loss
+
+
+if __name__ == '__main__':
+
+	warnings.filterwarnings(action='ignore')
+	load_dotenv()
+	checkpoint_root = os.getenv('CHECKPOINT_ROOT')
+	data_root = os.getenv('DATA_ROOT')
+
+	# random inits different for each GPU
+	local_rank = threading.get_ident() % 1231
+
+	torch.manual_seed(local_rank)
+	random.seed(local_rank) 
+	torch.cuda.manual_seed(local_rank)
+
+	tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+	tokenizer.pad_token = tokenizer.eos_token
+	n_vocab = len(tokenizer)
+
+	tokenized_length = 512
+	dim = 512
+	n_layers = 16
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	n_context = tokenized_length
+
+	model = retrieval_model
+	# loads a pretrained (on FineWeb) CLM model
+	load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32")
+	tokenizer.pad_token = tokenizer.eos_token
+	n_vocab = len(tokenizer)
+
+	split_index = 5000
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
+	datasets.config.IN_MEMORY_MAX_SIZE = 1e9
+	train_dataset = load_from_disk(train_path)
+	test_dataset = load_from_disk(test_path)
+
+	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
+
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=2,
+		per_device_train_batch_size=128,
+		per_device_eval_batch_size=128,
+		warmup_steps=50,
+		eval_steps=1000,
+		save_steps=10000,
+		logging_steps=50,
+		gradient_accumulation_steps=2,
+		learning_rate=1e-4,
+		fp16=True,
+		eval_strategy='steps',
+		output_dir=output_dir,
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True,
+		max_steps=200000,
+		torch_compile=True
+	)
+
+	trainer = transformers.Trainer(
+		model=model,
+		train_dataset=train_dataset,
+		eval_dataset=test_dataset,
+		args=training_arguments
+	)
+
+	trainer.train()

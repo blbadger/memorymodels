@@ -108,8 +108,8 @@ model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, 
 
 print (model)
 
-train_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
@@ -124,7 +124,7 @@ if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 batch_size = total_batch_size // n_devices
 # descriptive name for output
-output_dir = f'{checkpoint_root}/finemath_bertlarge_information_frozenwte\
+output_dir = f'{checkpoint_root}/fineweb_bertlarge_information_frozenwte\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -169,3 +169,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
+print (trainer.evaluate())

@@ -110,13 +110,12 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 
 # load a pretrained autoencoder
-#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 #model = LlamaForCausalLM(configuration)
 #load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-#encoder = model.encoder.model
+encoder = model.encoder.model
 
 #load_model(model, '/home/bbadger/Desktop/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 #encoder = model.model
@@ -133,7 +132,9 @@ model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, 
 
 # load the curriculum pretrained memory model
 #load_model(model, '/home/bbadger/Desktop/fineweb_copy_memtrans_frozenenc_nodecoder_c256x4_512c1_d512_n16_c256_b8x4/checkpoint-100000/model.safetensors')
-load_model(model, '/home/bbadger/Desktop/fineweb_copy_memtrans_frozenenc_pretraineddec_c256x4_512c1_d512_n16_c256_b16x4x1/checkpoint-100000/model.safetensors')
+# load the pretrained memory model
+load_model(model, '/home/azureuser/fineweb_blankcopy_memtrans_frozenautoenc_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
+
 print (model)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
@@ -200,8 +201,8 @@ trainer.train()
 
 model.objective = 'copy'
 print (f'Evaluating Copy Accuracy:')
-trainer.evaluate()
+print (trainer.evaluate())
 print ('='*90)
 print (f'Evaluating CLM Accuracy:')
 model.objective = 'clm'
-trainer.evaluate()
+print (trainer.evaluate())

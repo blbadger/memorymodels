@@ -154,4 +154,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+trainer.train(output_dir + '/checkpoint-200000')
+print (trainer.evaluate())

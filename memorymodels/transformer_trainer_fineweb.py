@@ -36,7 +36,8 @@ compression = 1
 n_layers = 16
 n_heads = 4
 
-vocab_size = len(AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B'))
+tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
+vocab_size = len(tokenizer)
 llama_config_kwargs = {
     'hidden_size':encoder_dim,
     'intermediate_size': 4*encoder_dim,
@@ -111,14 +112,13 @@ def tokenize_and_preprocess(example):
         example['attention_mask'] = tokens['attention_mask']
         return example
 
-#tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
-tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
+#tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
 
 def half_data(example):
     example['input_ids'] = example['input_ids'][256:]
@@ -131,8 +131,8 @@ train_dataset = load_from_disk(train_path) #.map(half_data, batched=False, num_p
 test_dataset = load_from_disk(test_path) #.map(half_data, batched=False, num_proc=12)
 print (len(train_dataset[0]['input_ids']))
 
-batch_size = 16
-n_devices = 4
+batch_size = 64
+n_devices = 2
 #train_dataset = load_from_disk(train_path).take(1000000).map(tokenize_and_preprocess, num_proc=16)
 #test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
@@ -141,7 +141,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_memtrans_256x4\
+output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -156,7 +156,7 @@ training_arguments = transformers.TrainingArguments(
 	gradient_accumulation_steps=1,
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=8000,
+	save_steps=20000,
 	learning_rate=4e-4, 
 	fp16=True,
 	eval_strategy='steps',

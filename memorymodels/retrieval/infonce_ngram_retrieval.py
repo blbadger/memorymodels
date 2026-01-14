@@ -9,6 +9,7 @@ from safetensors.torch import load_model, safe_open
 import random
 import threading
 from ..transformer_autoencoder import UnrolledAutoencodingTransformer
+from ..
 import os
 from dotenv import load_dotenv
 
@@ -123,7 +124,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2, temp=0.02):
 
 
 if __name__ == '__main__':
-
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	warnings.filterwarnings(action='ignore')
 	load_dotenv()
 	checkpoint_root = os.getenv('CHECKPOINT_ROOT')
@@ -138,28 +139,50 @@ if __name__ == '__main__':
 
 	tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 	tokenizer.pad_token = tokenizer.eos_token
-	n_vocab = len(tokenizer)
 
 	tokenized_length = 512
 	dim = 512
 	n_layers = 16
-	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	n_context = tokenized_length
+	ngram = 7
 
-	model = retrieval_model
+	vocab_size = len(tokenizer)
+	llama_config_kwargs = {
+	    'hidden_size':encoder_dim,
+	    'intermediate_size': 4*encoder_dim,
+	    'num_hidden_layers': n_layers,
+	    'num_attention_heads': n_heads,
+	    'vocab_size': vocab_size
+	}
+	print (llama_config_kwargs)
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
+	model = LlamaForCausalLM(configuration)
+	model = RetrievalTransformer(model, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 	# loads a pretrained (on FineWeb) CLM model
 	load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32")
 	tokenizer.pad_token = tokenizer.eos_token
-	n_vocab = len(tokenizer)
 
-	split_index = 5000
-	train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
-	test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 	train_dataset = load_from_disk(train_path)
 	test_dataset = load_from_disk(test_path)
 
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
+
+	batch_size = 128
+	n_devices = 4
+
+	# get number of devices (assumes that all visible devices are used for training)
+	if torch.cuda.is_available():
+	    n_devices = torch.cuda.device_count()
+
+	# descriptive name for output
+	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_infonce\
+	_{decoder_dim}\
+	_n{n_layers}\
+	_c{context_length}_b{batch_size}x{n_devices}'
 
 	training_arguments = transformers.TrainingArguments(
 		num_train_epochs=2,
@@ -169,7 +192,7 @@ if __name__ == '__main__':
 		eval_steps=1000,
 		save_steps=10000,
 		logging_steps=50,
-		gradient_accumulation_steps=2,
+		gradient_accumulation_steps=1,
 		learning_rate=1e-4,
 		fp16=True,
 		eval_strategy='steps',

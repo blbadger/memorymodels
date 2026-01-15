@@ -66,7 +66,7 @@ class RetrievalTransformer(nn.Module):
 
 class RetrievalAutoencoderTransformer(nn.Module):
 
-	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
+	def __init__(self, model, embed_comparison=256, pad_token_id=1, padding_side='right', ngram_size=7):
 		super().__init__()
 		if not isinstance(model.encoder, LlamaModel):
 			self.wte = model.wte
@@ -74,6 +74,7 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			self.wte = None
 
 		self.encoder = model.encoder
+		self.lm_head = model.lm_head
 		# freeze the encoder
 		for name, param in self.encoder.named_parameters():
 			param.requires_grad = False
@@ -83,6 +84,9 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		self.ngram_size = ngram_size
 		self.pad_token_id = pad_token_id
 		self.padding_side = padding_side
+		self.retrieval_head = nn.Linear(dim, 1, bias=True)
+		self.cel = torch.nn.CrossEntropyLoss()
+		self.embed_comparison = embed_comparison
 
 	def select_ngram(self, input_ids):
 		# expects inputs to be of shape [b, t]
@@ -94,6 +98,9 @@ class RetrievalAutoencoderTransformer(nn.Module):
 	def forward(self, input_ids, attention_mask, embeddings, labels=None, **kwargs):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
+		n_microbatches = input_ids.shape[0] // self.embed_comparison
+		batched_inputs, batched_embeddings = input_ids.reshape[n_microbatches, self.embed_comparison], embeddings.reshape[n_microbatches, self.embed_comparison]
+		for input_ids, embeddings in zip(batched_inputs, batch_embeddings)
 		matching_index, sample_ngram = self.select_ngram(input_ids)
 		pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
 		pad_attention = torch.zeros
@@ -106,9 +113,13 @@ class RetrievalAutoencoderTransformer(nn.Module):
 
 		if self.wte:
 			sample_ngram = self.wte(sample_ngram)
-		sample_ngram_embedding = self.encoder(sample_ngram)
+		sample_ngram_embedding = self.encoder(sample_ngram.unsqueeze(0))[0, -1, :]
 		embeddings[0] = sample_ngram_embedding # zeroth batch element is the query phrase
+		embeddings = embeddings.unsqueeze(0)
+		# label reassignment
+		labels = torch.tensor([matching_index], dtype=torch.long).unsqueeze(0).to(input_ids.device)
 		output = self.decoder(embeddings)
+		output = self.retrieval_head(output)
 		loss = self.cel(output, labels)
 		return loss, output
 
@@ -118,15 +129,16 @@ def half_data(example):
 		example['attention_mask'] = example['attention_mask'][256:]
 	return example
 
+@torch.no_grad()
 def embed_data(example):
-	x = example['input_ids']
+	x = torch.tensor(example['input_ids']).to(device)
 	if isinstance(autoencoder.encoder, AbbreviatedModel):
 		x = autoencoder.wte(x)
-		x = autoencoder.encoder(x)
+		x = autoencoder.encoder(x).to('cpu')
 	else:
-		x = autoencoder.encoder(x).last_hidden_state
-	example['embeddings'] = x
-	print (example)
+		x = autoencoder.encoder(x).last_hidden_state.to('cpu')
+	# x has shape [b, t, e]
+	example['embeddings'] = x[:, -1, :]
 	return example
 
 if __name__ == '__main__':
@@ -138,7 +150,6 @@ if __name__ == '__main__':
 
 	# random inits different for each GPU
 	local_rank = threading.get_ident() % 1231
-
 	torch.manual_seed(local_rank)
 	random.seed(local_rank) 
 	torch.cuda.manual_seed(local_rank)
@@ -178,19 +189,19 @@ if __name__ == '__main__':
 	decoder_dim = 512
 	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
 	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
+	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False).to(device)
 	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-	model = RetrievalAutoencoderTransformer(autoencoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	model = RetrievalAutoencoderTransformer(autoencoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
-	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
-	test_dataset = load_from_disk(test_path).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
+	train_dataset = load_from_disk(train_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
+	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
 
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 32
+	batch_size = 2048
 	n_devices = 4
 
 	# get number of devices (assumes that all visible devices are used for training)
@@ -211,7 +222,6 @@ if __name__ == '__main__':
 		eval_steps=1000,
 		save_steps=10000,
 		logging_steps=50,
-		gradient_accumulation_steps=1,
 		learning_rate=1e-4,
 		fp16=True,
 		eval_strategy='steps',
@@ -220,7 +230,7 @@ if __name__ == '__main__':
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
-	#	torch_compile=True
+		torch_compile=True
 	)
 
 	trainer = transformers.Trainer(

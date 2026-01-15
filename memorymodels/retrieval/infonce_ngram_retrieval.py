@@ -1,7 +1,7 @@
 import torch
 from einops import rearrange
 import transformers
-from transformers import LlamaConfig, LlamaForCausalLM, AutoTokenizer
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel, AutoTokenizer
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoTokenizer
@@ -14,7 +14,7 @@ import warnings
 import datasets
 from datasets import load_from_disk
 
-from transformer_autoencoder import UnrolledAutoencodingTransformer
+from transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
 
 class RetrievalTransformer(nn.Module):
 
@@ -56,12 +56,12 @@ class RetrievalAutoencoderTransformer(nn.Module):
 
 	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
 		super().__init__()
-		if isinstance(self.encoder, LlamaModel):
+		if not isinstance(model.encoder, LlamaModel):
 			self.wte = model.wte
 		else:
 			self.wte = None
 
-		self.model = model.encoder # assumes that the encoder is a LlamaModel with trained wte
+		self.model = model.encoder 
 		self.ngram_size = ngram_size
 		self.pad_token_id = pad_token_id
 		self.padding_side = padding_side
@@ -151,7 +151,7 @@ if __name__ == '__main__':
 
 	tokenized_length = 256
 	dim = 512
-	n_layers = 16
+	n_layers = 8
 	n_heads = 4
 	n_context = tokenized_length
 	ngram = 7
@@ -173,17 +173,17 @@ if __name__ == '__main__':
 	# load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
 	# model = RetrievalTransformer(model, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
-	# train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-	# test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-lpad-c512"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
 	# datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 	# train_dataset = load_from_disk(train_path)
 	# test_dataset = load_from_disk(test_path)
-
-	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-	model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
-	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000')
-	model = RetreivalAutoencoderTransformer(model, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	decoder_dim=512
+	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
+	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+	model = RetrievalAutoencoderTransformer(autoencoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
 	def half_data(example):
 	    example['input_ids'] = example['input_ids'][256:]

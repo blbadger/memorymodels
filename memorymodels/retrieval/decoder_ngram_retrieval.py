@@ -103,11 +103,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
 		n_microbatches = input_ids.shape[0] // self.embed_comparison
-		all_indices = []
-		for n in n_microbatches:
-			matching_index, sample_ngram = self.select_ngram(input_ids[n:n+self.embed_comparison, :])
+		all_indices, all_ngrams = [], []
+		for n in range(n_microbatches):
+			matching_index, sample_ngram = self.select_ngram(input_ids[n*self.embed_comparison:n*self.embed_comparison+self.embed_comparison, :])
 			pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
-			pad_attention = torch.zeros
 
 			if self.padding_side == 'right':
 				sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
@@ -116,16 +115,21 @@ class RetrievalAutoencoderTransformer(nn.Module):
 				sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
 				attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
 
-			if self.wte:
-				sample_ngram = self.wte(sample_ngram)
-			sample_ngram_embedding = self.encoder(sample_ngram.unsqueeze(0))[0, -1, :]
-			embeddings[n] = sample_ngram_embedding # zeroth batch element is the query phrase
+			#sample_ngram_embedding = self.encoder(sample_ngram.unsqueeze(0))[0, -1, :]
+			#embeddings[n*self.embed_comparison] = sample_ngram_embedding # zeroth batch element is the query phrase
 			all_indices.append(matching_index)
+			all_ngrams.append(sample_ngram)
 
+		all_ngrams = torch.stack((all_ngrams), dim=0).to(input_ids.device)
+		if self.wte:
+			all_ngrams = self.wte(all_ngrams)
+		sample_embeddings = self.encoder(all_ngrams)[:, -1, :]
+		embedding_swap_indices = [n*self.embed_comparison for n in range(n_microbatches)]
+		embeddings[embedding_swap_indices] = sample_embeddings
 		# reshape embeddings into minibatches
-		embeddings = embeddings.reshape('(b c) h -> b c h', c=self.embed_comparison)
+		embeddings = rearrange(embeddings, '(b c) h -> b c h', c=self.embed_comparison)
 		# label reassignment
-		labels = torch.tensor(all_indices, dtype=torch.long).unsqueeze(0).to(input_ids.device)
+		labels = torch.tensor(all_indices, dtype=torch.long).unsqueeze(1).to(input_ids.device)
 		if isinstance(self.decoder, AbbreviatedModel):
 			output = self.decoder(embeddings)
 		else:
@@ -204,17 +208,18 @@ if __name__ == '__main__':
 	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
 	decoder = LlamaModel(configuration)
 
-	embed_comparison = 32
+	embed_comparison = 4
 	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
 	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
-	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
-
+	test_dataset = load_from_disk(test_path).take(10000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
+	
+	model = model.to('cpu')
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 32
+	batch_size = 128
 	total_sample_size = batch_size * embed_comparison
 	n_devices = 4
 
@@ -245,7 +250,7 @@ if __name__ == '__main__':
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
-		#torch_compile=True
+		torch_compile=True
 	)
 
 	trainer = transformers.Trainer(

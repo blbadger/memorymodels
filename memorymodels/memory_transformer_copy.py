@@ -163,7 +163,6 @@ c{compression}\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_per_device}x{n_devices}x{gradient_accumulation_steps}'
-output_dir = '/home/bbadger/Desktop/test'
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,

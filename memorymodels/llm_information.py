@@ -69,7 +69,7 @@ model = AutoModelForCausalLM.from_pretrained('unsloth/Llama-3.2-1B')
 tokenizer = AutoTokenizer.from_pretrained('unsloth/Llama-3.2-1B')
 
 vocab_size = len(tokenizer)
-context_length = 64
+context_length = 16
 encoder_dim = 2048
 decoder_dim = 512
 n_layers = 16
@@ -131,7 +131,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000,
+	max_steps=40000,
 	save_safetensors=False,
         torch_compile=True
 )
@@ -154,5 +154,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train(output_dir + '/checkpoint-200000')
+trainer.train(output_dir + '/checkpoint-40000')
 print (trainer.evaluate())

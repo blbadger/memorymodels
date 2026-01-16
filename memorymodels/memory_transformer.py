@@ -304,15 +304,21 @@ class ObjectiveMemoryTransformer(nn.Module):
 		input_ids = input_ids.to(device)
 		all_inputs = []
 		if self.objective != 'clm':
-			copy_input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy, clone=True)
 			# copy delimiter for training with mixed objective
-			copy_input_ids[:, len(input_ids[0])//2:len(input_ids[0])//2 + 3] = torch.ones(copy_input_ids.shape[0], 3) * 100
 			if labels is not None:
-				copy_label_arr = copy_labels(labels, clone=True) # masks first half
-				copy_label_arr[:, len(input_ids[0])//2-1:len(input_ids[0])//2 + 2]  = torch.ones(copy_input_ids.shape[0], 3) * -100
-			if self.objective == 'combined':
-				all_inputs = [[input_ids, labels]]
-			all_inputs.append([copy_input_ids, copy_label_arr])
+				if self.objective == 'combined':
+					copy_input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy, clone=True)
+					copy_input_ids[:, len(input_ids[0])//2:len(input_ids[0])//2 + 3] = torch.ones(copy_input_ids.shape[0], 3) * 100
+					copy_label_arr = copy_labels(labels, clone=True) # masks first half
+					copy_label_arr[:, len(input_ids[0])//2-1:len(input_ids[0])//2 + 2]  = torch.ones(copy_input_ids.shape[0], 3) * -100
+					all_inputs = [[input_ids, labels]]
+					all_inputs.append([copy_input_ids, copy_label_arr])
+				elif self.objective == 'copy':
+					copy_input_ids = copy_dataset(input_ids, blank_copy=self.blank_copy, clone=False)
+					copy_input_ids[:, len(input_ids[0])//2:len(input_ids[0])//2 + 3] = torch.ones(copy_input_ids.shape[0], 3) * 100
+					copy_label_arr = copy_labels(labels, clone=False) # masks first half
+					copy_label_arr[:, len(input_ids[0])//2-1:len(input_ids[0])//2 + 2]  = torch.ones(copy_input_ids.shape[0], 3) * -100
+					all_inputs.append([copy_input_ids, copy_label_arr])
 		else:
 			all_inputs = [[input_ids, labels]]
 		
@@ -321,6 +327,7 @@ class ObjectiveMemoryTransformer(nn.Module):
 			# generate encoder embeddings
 			embedding_array = []
 			i = 0
+			attention_chunks = []
 			if self.no_memory:
 				i = 1e9
 				embedding_array = [torch.ones((input_ids.shape[0], 1, self.decoder_dim)).to(device) for _ in range(self.chunks)]
@@ -339,12 +346,13 @@ class ObjectiveMemoryTransformer(nn.Module):
 				if self.decoder_proj:
 					encoder_embedding = self.decoder_proj(encoder_embedding)
 				embedding_array.append(encoder_embedding)
+				attention_chunks.append(attention_chunk)
 				i += self.tokenized_length
 
 			# embedding_array now stores length // n_ctx - 1 embeddings
 			input_embeddings = self.decoder_wte(input_ids)
 			all_outputs = []
-			for c in range(self.chunks): # self.chunks
+			for c in range(self.chunks): 
 				decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 				if self.fixed_memory:
 					pad = torch.ones((input_ids.shape[0], self.chunks-c, input_embeddings.shape[2])).to(device)
@@ -353,7 +361,6 @@ class ObjectiveMemoryTransformer(nn.Module):
 					x = torch.cat((embedding_array[:c] + [decoder_embeds]), dim=1) # concatenation on token dim
 				if attention_mask is not None:
 					attention_mask = torch.cat((torch.ones(input_ids.shape[0], c).to(device), attention_mask), dim=1)
-				
 				# feed pre-concatenated input embeddings to the transformer decoder
 				x = self.decoder(inputs_embeds=x, attention_mask=attention_mask)
 				output = self.lm_head(x.last_hidden_state)
@@ -376,7 +383,6 @@ class ObjectiveMemoryTransformer(nn.Module):
 					total_loss += loss
 			if total_loss == 0:
 				total_loss = loss # if no chunks are valid
-			total_loss += loss
 
 		mean_loss = total_loss / self.chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim

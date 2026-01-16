@@ -66,7 +66,8 @@ class RetrievalTransformer(nn.Module):
 
 class RetrievalAutoencoderTransformer(nn.Module):
 
-	def __init__(self, model, embed_comparison=256, pad_token_id=1, padding_side='right', ngram_size=7):
+	def __init__(self, model, custom_decoder=None, embed_comparison=256, pad_token_id=1, padding_side='right', ngram_size=7):
+
 		super().__init__()
 		if not isinstance(model.encoder, LlamaModel):
 			self.wte = model.wte
@@ -80,7 +81,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			param.requires_grad = False
 
 		# trainable decoder
-		self.decoder = model.decoder
+		if custom_decoder:
+			self.decoder = custom_decoder
+		else:
+			self.decoder = model.decoder
 		self.ngram_size = ngram_size
 		self.pad_token_id = pad_token_id
 		self.padding_side = padding_side
@@ -98,9 +102,6 @@ class RetrievalAutoencoderTransformer(nn.Module):
 	def forward(self, input_ids, attention_mask, embeddings, labels=None, **kwargs):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
-		n_microbatches = input_ids.shape[0] // self.embed_comparison
-		batched_inputs, batched_embeddings = input_ids.reshape[n_microbatches, self.embed_comparison], embeddings.reshape[n_microbatches, self.embed_comparison]
-		for input_ids, embeddings in zip(batched_inputs, batch_embeddings)
 		matching_index, sample_ngram = self.select_ngram(input_ids)
 		pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
 		pad_attention = torch.zeros
@@ -118,9 +119,13 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		embeddings = embeddings.unsqueeze(0)
 		# label reassignment
 		labels = torch.tensor([matching_index], dtype=torch.long).unsqueeze(0).to(input_ids.device)
-		output = self.decoder(embeddings)
+		if isinstance(self.decoder, AbbreviatedModel):
+			output = self.decoder(embeddings)
+		else:
+			output = self.decoder(inputs_embeds=embeddings).last_hidden_state # assumes a LlamaModel
 		output = self.retrieval_head(output)
 		loss = self.cel(output, labels)
+		if not self.training: print (torch.argmax(output), labels, loss)
 		return loss, output
 
 def half_data(example):
@@ -191,17 +196,17 @@ if __name__ == '__main__':
 	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
 	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False).to(device)
 	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-	model = RetrievalAutoencoderTransformer(autoencoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
-
+	decoder = LlamaModel(configuration)
+	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=2, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
-	train_dataset = load_from_disk(train_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
+	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
 	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
 
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 2048
+	batch_size = 4
 	n_devices = 4
 
 	# get number of devices (assumes that all visible devices are used for training)
@@ -218,11 +223,12 @@ if __name__ == '__main__':
 		num_train_epochs=2,
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
-		warmup_steps=50,
+		gradient_accumulation_steps=1,
+		warmup_steps=500,
 		eval_steps=1000,
 		save_steps=10000,
-		logging_steps=50,
-		learning_rate=1e-4,
+		logging_steps=500,
+		learning_rate=0.5e-4,
 		fp16=True,
 		eval_strategy='steps',
 		output_dir=output_dir,
@@ -230,7 +236,7 @@ if __name__ == '__main__':
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
-		torch_compile=True
+		#torch_compile=True
 	)
 
 	trainer = transformers.Trainer(

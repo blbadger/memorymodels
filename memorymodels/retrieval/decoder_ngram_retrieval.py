@@ -102,30 +102,36 @@ class RetrievalAutoencoderTransformer(nn.Module):
 	def forward(self, input_ids, attention_mask, embeddings, labels=None, **kwargs):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
-		matching_index, sample_ngram = self.select_ngram(input_ids)
-		pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
-		pad_attention = torch.zeros
-		if self.padding_side == 'right':
-			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
-			attention_ngram = torch.cat((torch.ones(self.ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
-		elif self.padding_side == 'left':
-			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
-			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+		n_microbatches = input_ids.shape[0] // self.embed_comparison
+		all_indices = []
+		for n in n_microbatches:
+			matching_index, sample_ngram = self.select_ngram(input_ids[n:n+self.embed_comparison, :])
+			pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
+			pad_attention = torch.zeros
 
-		if self.wte:
-			sample_ngram = self.wte(sample_ngram)
-		sample_ngram_embedding = self.encoder(sample_ngram.unsqueeze(0))[0, -1, :]
-		embeddings[0] = sample_ngram_embedding # zeroth batch element is the query phrase
-		embeddings = embeddings.unsqueeze(0)
+			if self.padding_side == 'right':
+				sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
+				attention_ngram = torch.cat((torch.ones(self.ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+			elif self.padding_side == 'left':
+				sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
+				attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+
+			if self.wte:
+				sample_ngram = self.wte(sample_ngram)
+			sample_ngram_embedding = self.encoder(sample_ngram.unsqueeze(0))[0, -1, :]
+			embeddings[n] = sample_ngram_embedding # zeroth batch element is the query phrase
+			all_indices.append(matching_index)
+
+		# reshape embeddings into minibatches
+		embeddings = embeddings.reshape('(b c) h -> b c h', c=self.embed_comparison)
 		# label reassignment
-		labels = torch.tensor([matching_index], dtype=torch.long).unsqueeze(0).to(input_ids.device)
+		labels = torch.tensor(all_indices, dtype=torch.long).unsqueeze(0).to(input_ids.device)
 		if isinstance(self.decoder, AbbreviatedModel):
 			output = self.decoder(embeddings)
 		else:
 			output = self.decoder(inputs_embeds=embeddings).last_hidden_state # assumes a LlamaModel
 		output = self.retrieval_head(output)
 		loss = self.cel(output, labels)
-		if not self.training: print (torch.argmax(output), labels, loss)
 		return loss, output
 
 def half_data(example):
@@ -197,7 +203,9 @@ if __name__ == '__main__':
 	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False).to(device)
 	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
 	decoder = LlamaModel(configuration)
-	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=2, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
+
+	embed_comparison = 32
+	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
 	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
@@ -206,7 +214,8 @@ if __name__ == '__main__':
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 4
+	batch_size = 32
+	total_sample_size = batch_size * embed_comparison
 	n_devices = 4
 
 	# get number of devices (assumes that all visible devices are used for training)
@@ -221,8 +230,8 @@ if __name__ == '__main__':
 
 	training_arguments = transformers.TrainingArguments(
 		num_train_epochs=2,
-		per_device_train_batch_size=batch_size,
-		per_device_eval_batch_size=batch_size,
+		per_device_train_batch_size=total_sample_size,
+		per_device_eval_batch_size=total_sample_size,
 		gradient_accumulation_steps=1,
 		warmup_steps=500,
 		eval_steps=1000,

@@ -31,7 +31,7 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 encoder_dim = 512
 decoder_dim = 512
-context_length = 256
+context_length = 512
 compression = 1
 n_layers = 16
 n_heads = 4
@@ -119,8 +119,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 def half_data(example):
     example['input_ids'] = example['input_ids'][256:]
@@ -159,7 +159,7 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=20000,
-	learning_rate=4e-4, 
+	learning_rate=2e-4, 
 	fp16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,

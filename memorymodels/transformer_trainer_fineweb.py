@@ -50,8 +50,10 @@ print (llama_config_kwargs)
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Memory transformer
-#encoder_model = LlamaModel(configuration)
-model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None)
+model = LlamaModel(configuration)
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total trainable parameters: {trainable_params}")
+#model = VariableMemoryTransformer(vocab_size, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None)
 #load_model(model, '/home/azureuser/fineweb_memory_transformer_512x4_256c1_d512_n16_c512_b64x2/checkpoint-72000/model.safetensors')
 
 # Initializing a model from the llama-7b style configuration

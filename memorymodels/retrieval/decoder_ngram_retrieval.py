@@ -208,18 +208,17 @@ if __name__ == '__main__':
 	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
 	decoder = LlamaModel(configuration)
 
-	embed_comparison = 4
+	embed_comparison = 32
 	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
 	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
 	test_dataset = load_from_disk(test_path).take(10000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
 	
-	model = model.to('cpu')
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 128
+	batch_size = 32
 	total_sample_size = batch_size * embed_comparison
 	n_devices = 4
 

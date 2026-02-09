@@ -76,7 +76,22 @@ print(f"Total trainable parameters: {trainable_params}")
 # unrolled embedding transformer autoencoder
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
+load_model(model, f'{checkpoint_root}/fineweb_autoencoding_transformer_512c1_d512_n16_c512_b64x2/checkpoint-200000/model.safetensors')
+
+n_layers = 8
+llama_config_kwargs = { 
+    'hidden_size':encoder_dim,
+    'intermediate_size': 4*encoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size
+}
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = model.encoder
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
 
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
@@ -143,7 +158,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer\
+output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer_information\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\

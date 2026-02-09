@@ -59,7 +59,7 @@ def preprocess_logits_for_metrics(logits, labels):
 
 encoder_dim = 512
 decoder_dim = 512
-context_length = 256
+context_length = 512
 compression = 1
 n_layers = 16
 n_heads = 4
@@ -80,23 +80,26 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 encoder_dim = 512 
 decoder_dim = 512 
-context_length = 256 
+context_length = 512 
 compression = 1 
 n_layers = 16  
 n_heads = 4 
 model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, objective='combined', n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, blank_copy=False)
-safetensors.torch.load_model(model, '/home/azureuser/fineweb_combined_memtrans_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
 
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+safetensors.torch.load_model(model, '/home/azureuser/fineweb_autoencoding_transformer_512c1_d512_n16_c512_b64x2/checkpoint-200000/model.safetensors')
 
 # unrolled embedding transformer autoencoder
-encoder_model = model.encoder
+#encoder_model = model.encoder
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = LlamaModel(configuration)
-model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
+#decoder_model = LlamaModel(configuration)
+#model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
@@ -134,7 +137,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=200000,
 	save_safetensors=False,
-        torch_compile=True
+        #torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -148,12 +151,12 @@ trainer = transformers.Trainer(
 )
 
 # save driver code snapshot in checkpoint dir
-code_path = os.path.abspath(__file__)
-if not os.path.isdir(output_dir):
-	os.mkdir(output_dir)
-shutil.copy(code_path, output_dir)
+#code_path = os.path.abspath(__file__)
+#if not os.path.isdir(output_dir):
+#	os.mkdir(output_dir)
+#shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+#trainer.train()
 print (trainer.evaluate())

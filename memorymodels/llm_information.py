@@ -59,7 +59,8 @@ def preprocess_logits_for_metrics(logits, labels):
 
 def tokenize_and_preprocess(example):
 	text = example['text']
-	tokens = tokenizer(text, max_length=1024, padding='max_length', truncation=True) # return list, not tensor
+	global context_length
+	tokens = tokenizer(text, max_length=context_length, padding='max_length', truncation=True) # return list, not tensor
 	example['input_ids'] = tokens['input_ids']
 	example['attention_mask'] = tokens['attention_mask']
 	return example
@@ -92,25 +93,25 @@ decoder_model = LlamaModel(configuration)
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
 print (model)
-train_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
-test_path = f"{data_root}/finemath-4-tokenized-train-c512-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=16)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 2048
+global_batch_size = 32768 // context_length
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
+batch_size = global_batch_size // n_devices
 
 encoder_dim = 2048
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_llama1b_information_frozenwte\
 _{encoder_dim}\
-_\
 _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
@@ -123,8 +124,8 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=100,
 	eval_steps=4000,
 	logging_steps=500,
-	save_steps=8000,
-	learning_rate=1e-4,
+	save_steps=20000,
+	learning_rate=2e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,

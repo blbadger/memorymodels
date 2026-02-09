@@ -69,7 +69,8 @@ encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
 tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
 
 vocab_size = len(tokenizer)
-context_length = 512
+
+context_length = 256
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 24
@@ -83,7 +84,7 @@ bert_config_kwargs = {
     'max_position_embeddings': context_length
 }
 
-# decoder configuration
+# decoder configuration: prefer causal models in general
 #configuration = BertConfig(**bert_config_kwargs)
 #decoder_model = BertModel(configuration)
 
@@ -108,8 +109,8 @@ model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, 
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-lpad-8k"
+train_path = f"/datadrive/finemath-4-tokenized-train-c512-lpad-8k"
+test_path = f"{data_root}/finemath-4-tokenized-test-c512-lpad-8k"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
@@ -117,13 +118,14 @@ train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
 total_batch_size = 32768 // context_length
-n_devices = 4
+n_devices = 2
+
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 batch_size = total_batch_size // n_devices
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_bertlarge_information_frozenwte\
+output_dir = f'{checkpoint_root}/finemath_bertlarge_information_frozenwte\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -167,5 +169,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train(output_dir + '/checkpoint-200000')
+trainer.train()
 print (trainer.evaluate())

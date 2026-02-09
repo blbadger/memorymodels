@@ -131,7 +131,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000,
+	max_steps=40000,
 	save_safetensors=False,
         torch_compile=True
 )
@@ -154,4 +154,5 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train()
+trainer.train(output_dir + '/checkpoint-40000')
+print (trainer.evaluate())

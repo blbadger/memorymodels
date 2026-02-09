@@ -90,12 +90,12 @@ tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-encoder_dim = 512 
+encoder_dim = 512
 decoder_dim = 512 
-context_length = 256 
+context_length = 512
 compression = 1 
 n_layers = 16
-n_heads = 4 
+n_heads = 8
 
 vocab_size = 8000
 llama_config_kwargs = { 
@@ -107,35 +107,40 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-#configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 #encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-
+encoder = LlamaForCausalLM(configuration)
+print (encoder)
 # load a pretrained autoencoder
 #model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 #model = LlamaForCausalLM(configuration)
-#load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-#encoder = model.encoder.model
+load_model(model, f'{checkpoint_root}/fineweb_autoencoding_transformer_512c1_d512_n16_c256_b64x2/checkpoint-200000/model.safetensors')
+encoder = model.encoder.model
 
 #load_model(model, '/home/bbadger/Desktop/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 #encoder = model.model
+#load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+#encoder = model.encoder.model
 
-encoder_dim = 512
 decoder_dim = 512
 context_length = 256
 compression = 1 
 n_layers = 16 
 n_heads = 4
-model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, objective='combined', n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, blank_copy=False)
+model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, objective='combined', n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder, no_memory=False, blank_copy=True)
 
-# load the pretrained memory model
+#model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4)
+# load the curriculum pretrained memory model
 #load_model(model, '/home/bbadger/Desktop/fineweb_copy_memtrans_frozenenc_nodecoder_c256x4_512c1_d512_n16_c256_b8x4/checkpoint-100000/model.safetensors')
-
+# load the pretrained memory model
+load_model(model, '/home/azureuser/fineweb_copy_curriculum_memtrans_frozenautoenc_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
+#load_model(model, '/home/azureuser/fineweb_clm_untrained_memtrans_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c1024"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c1024"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 3e9
@@ -143,14 +148,14 @@ train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16)
 
 total_batch_size = 64
-n_devices = 2
+n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
-batch_per_device = 32
+batch_per_device = 16
 gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_combined_memtrans_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_combined_curriculum_blankcopy_frozenauto_memtrans\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -173,7 +178,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
-        #torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -194,12 +199,12 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.train(output_dir)
+trainer.train()
 
 model.objective = 'copy'
 print (f'Evaluating Copy Accuracy:')
-trainer.evaluate()
+print (trainer.evaluate())
 print ('='*90)
 print (f'Evaluating CLM Accuracy:')
 model.objective = 'clm'
-trainer.evaluate()
+print (trainer.evaluate())

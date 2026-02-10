@@ -68,7 +68,7 @@ def tokenize_and_preprocess(example):
 tokenizer = AutoTokenizer.from_pretrained(f'{data_root}/tokenizer_fineweb_8k')
 tokenizer.pad_token = tokenizer.eos_token
 vocab_size = len(tokenizer)
-context_length = 256
+context_length = 512
 encoder_dim = 512
 decoder_dim = 512
 n_layers = 8
@@ -89,12 +89,27 @@ encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_leng
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=1, freeze_encoder=False)
 
+encoder_model = LlamaForCausalLM(configuration)
+#safetensors.torch.load_model(encoder_model, '/home/badger/contrastive_finemath_transformer_512_n16_b32_lpad_penult/model.safetensors', strict=False) # no lm_head for retr models
+encoder_model = AbbreviatedModel(encoder_model, tokenized_length=context_length)
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+llama_config_kwargs = {
+    'hidden_size':decoder_dim,
+    'intermediate_size': 4*decoder_dim,
+    'num_hidden_layers': 8,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size
+}
+configuration = LlamaConfig(**llama_config_kwargs)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length,                                                                                 compression=1, freeze_encoder=True)
+
 ## unrolled embedding transformer autoencoder
 #encoder_model = LlamaModel(configuration).model
 ##decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #decoder_model = LlamaModel(configuration).model
 #model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
-load_model(model, f'{data_root}/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+load_model(model, f'{data_root}/fineweb_frozen_untrained_retrievalenc_unrolledauto_512c1_d512_n8_c512_b32x4/checkpoint-200000/model.safetensors')
 
 #only test
 train_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"

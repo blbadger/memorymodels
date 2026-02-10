@@ -147,6 +147,8 @@ ENV/
 env.bak/
 venv.bak/
 mem-venv
+*ham-venv
+/hamming_drivers/ham-venv
 
 # Spyder project settings
 .spyderproject

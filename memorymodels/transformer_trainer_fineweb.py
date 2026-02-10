@@ -174,7 +174,7 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=20000,
-	learning_rate=2e-4, 
+	learning_rate=4e-4, 
 	fp16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -202,4 +202,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-24000')
+#trainer.train(output_dir + '/checkpoint-20000')

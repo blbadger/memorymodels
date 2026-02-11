@@ -27,6 +27,29 @@ load_dotenv()
 checkpoint_root = os.getenv('CHECKPOINT_ROOT')
 data_root = os.getenv('DATA_ROOT')
 
+@torch.no_grad()
+def hamming(model_output, labels):
+        total_metric = 0 
+        # no shift for autoencoders
+        labels= torch.tensor(labels)
+        model_output = torch.tensor(model_output[0])
+        nonpad_tokens = torch.where(labels != -100, 1, 0)
+        equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
+        average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
+        return torch.tensor([average_metric])
+
+def compute_hamming_metric(eval_preds):
+        preds, labels = eval_preds
+        hamming_metric = hamming(preds, labels)
+        return {'Hamming Distance': hamming_metric}
+
+def preprocess_logits_for_metrics(logits, labels):
+    """ 
+    Original Trainer has a memory leak: a workaround to avoid saving all tensors
+    """
+    pred_ids = torch.argmax(logits, dim=-2)
+    return pred_ids, labels
+
 warnings.filterwarnings(action='ignore')
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indices are compatible with accelerate
 
@@ -107,8 +130,8 @@ train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 mlflow.end_run()
 
-batch_size = 32
-n_devices = 4
+batch_size = 128
+n_devices = 1
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
@@ -137,7 +160,8 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=200000
+	max_steps=200000,
+#	torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -146,8 +170,10 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-	compute_loss_func=hamming_metric
+        compute_metrics = compute_hamming_metric,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )
 
-safetensors.torch.load_model(model, output_dir + '/checkpoint-200000/model.safetensors')
+#safetensors.torch.load_model(model, output_dir + '/checkpoint-200000/model.safetensors')
+trainer.train()
 print (trainer.evaluate())

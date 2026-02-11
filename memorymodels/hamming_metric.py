@@ -21,7 +21,6 @@ from mixer_autoencoder import TruncatedModel, RecurrentMemoryMixer
 from memory_transformer import MemoryTransformer, ProjMemoryTransformer
 import warnings
 
-
 from dotenv import load_dotenv
 import pathlib
 load_dotenv()
@@ -33,41 +32,28 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu' # NB 'cuda' but not indi
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
-def compute_hamming_loss(model, inputs, num_items_in_batch=None):
-        if isinstance(inputs, dict) and "labels" in inputs:
-            labels = inputs["labels"]
-        else:
-            labels = None
-        outputs = model(inputs)
+@torch.no_grad()
+def hamming(model_output, labels):
+        total_metric = 0 
+        # no shift for autoencoders
+        labels= torch.tensor(labels)
+        model_output = torch.tensor(model_output[0])
+        nonpad_tokens = torch.where(labels != -100, 1, 0)
+        equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
+        average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
+        return torch.tensor([average_metric])
 
-        total_loss = 0 
-        if labels is not None:
-            for i in range(len(inputs['input_ids'])):
-                loss = hamming_metric(outputs[i], labels[i], num_items_in_batch=num_items_in_batch)
-            total_loss += loss  
-            
-        return loss/len(inputs['input_ids'])
+def compute_hamming_metric(eval_preds):
+        preds, labels = eval_preds
+        hamming_metric = hamming(preds, labels)
+        return {'Hamming Distance': hamming_metric}
 
-
-def hamming_metric(model_output, input_tokens, *args, **kwargs):
-    total_metric = 0 
-    generated_tokens = torch.argmax(model_output[1], dim=1)
-    for i in range(len(generated_tokens)):
-        # expects tokens to be pre-flattened
-        assert len(input_tokens[i]) == len(generated_tokens[i])
-        count, card = 0, 0
-        pad_token = tokenizer.encode(tokenizer.pad_token)[-1] # will be [2]
-        for j in range(len(input_tokens[i])):
-            if input_tokens[i][j] == pad_token:
-                continue
-            else:
-                card += 1
-                if input_tokens[i][j] in generated_tokens[i][j]:
-                    count += 1
-        total_metric += (card - count) / card
-    average_metric = torch.tensor([total_metric / len(generated_tokens)]).to(device)
-    return average_metric
-
+def preprocess_logits_for_metrics(logits, labels):
+    """ 
+    Original Trainer has a memory leak: a workaround to avoid saving all tensors
+    """
+    pred_ids = torch.argmax(logits, dim=-2)
+    return pred_ids, labels
 
 if __name__ == '__main__':
     tokenized_length = 256

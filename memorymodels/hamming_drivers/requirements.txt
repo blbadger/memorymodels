@@ -97,7 +97,7 @@ opentelemetry-semantic-conventions==0.54b1
 packaging==24.2
 pandas==2.2.3
 pathvalidate==3.3.1
-peft==0.18.0
+peft==0.15.1
 pillow==11.2.1
 portalocker==3.2.0
 prettytable==3.16.0

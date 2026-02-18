@@ -2,7 +2,7 @@
 
 ### Overview
 
-Code for work on text compression and memory augmentation via masked mixer autoencoders.
+Code for the paper 'Language Model Memory and Memory Models for Language', found here: www.arxiv.org/abs/2602.13466
 
 ### Quickstart
 
@@ -46,12 +46,3 @@ This means that if a new dataset is introduced, you must tokenize it first via `
 
 If you want to train a tokenizer on a corpus, use `fineweb_tokenizer_trainer.py`. 
 
-### Experimental Records
-
-This project is currently focused on training efficiency with respect to compression achieved (or equivalently NLL loss or CEL) per compute amount applied, and so right now the primary experimental results are training runs. Trainers will save model, optimizer, losses, and some hyperparameter states which can be plotted. The driver code in the target checkpoint directory, but it is preferred to use an unambiguous name for this folder that describes all relevant detais of each experiment to avoid making results too difficult to find.
-
-In the future functional benchmarks will likely be used to supplement the compression data.
-
-### TODOs
-- [x] Refactor driver code to keep model implementations separate from trainers and initializers
-- [x] Refactor hardcoded paths into envs, one for each server node

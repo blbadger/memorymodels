@@ -233,7 +233,6 @@ class VariableMemoryTransformer(nn.Module):
 		return mean_loss, all_outputs
 
 
-
 class ObjectiveMemoryTransformer(nn.Module):
 
 	def __init__(self, n_vocab, encoder_dim, dim, depth, length, objective='combined', compression=1, n_heads=4, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, decoder=None, blank_copy=False):

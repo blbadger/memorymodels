@@ -69,6 +69,7 @@ encoder_model = AutoModel.from_pretrained('google-bert/bert-large-uncased')
 tokenizer = AutoTokenizer.from_pretrained('google-bert/bert-large-uncased')
 
 vocab_size = len(tokenizer)
+
 context_length = 256
 encoder_dim = 1024
 decoder_dim = 1024
@@ -83,7 +84,7 @@ bert_config_kwargs = {
     'max_position_embeddings': context_length
 }
 
-# decoder configuration
+# decoder configuration: prefer causal models in general
 #configuration = BertConfig(**bert_config_kwargs)
 #decoder_model = BertModel(configuration)
 
@@ -108,8 +109,9 @@ model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, 
 
 print (model)
 
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+rain_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
+
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9

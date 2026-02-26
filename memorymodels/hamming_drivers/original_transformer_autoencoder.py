@@ -71,6 +71,7 @@ class AbbreviatedModel(nn.Module):
 		super().__init__()
 		self.model = model
 		self.depth = depth
+		self.tokenized_length = tokenized_length
 		self.position_ids = torch.tensor([[i for i in range(tokenized_length)]]).to(device)
 
 	def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
@@ -78,7 +79,6 @@ class AbbreviatedModel(nn.Module):
 		x = input_ids.to(device)
 		position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
 		position_embeddings = self.model.model.rotary_emb(x, position_ids)
-
 		for i in range(self.depth):
 			x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
 		return x
@@ -141,7 +141,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
 		output = self.lm_head(x)
 		output = rearrange(output, 'b t e -> b e t')
-		if labels:
+		if labels is not None:
 			loss = self.cel(output, labels)
 		else:
 			loss = 0

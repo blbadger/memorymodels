@@ -20,7 +20,7 @@ from safetensors.torch import load_model
 
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
-
+from hamming_metric import compute_hamming_metric, preprocess_logits_for_metrics
 warnings.filterwarnings(action='ignore')
 
 load_dotenv()
@@ -31,9 +31,9 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 
 encoder_dim = 512
 decoder_dim = 512
-context_length = 256
+context_length = 512
 compression = 1
-n_layers = 16
+n_layers =8 
 n_heads = 4
 
 tokenizer = AutoTokenizer.from_pretrained(f"{data_root}/tokenizer_fineweb_8k")
@@ -77,6 +77,21 @@ print(f"Total trainable parameters: {trainable_params}")
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+load_model(model, f'{checkpoint_root}/fineweb_autoencoding_transformer_512c1_d512_n8_c512_b128x1/checkpoint-200000/model.safetensors')
+
+n_layers = 8
+llama_config_kwargs = { 
+    'hidden_size':encoder_dim,
+    'intermediate_size': 4*encoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size
+}
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+encoder_model = model.encoder
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
 
 #safetensors.torch.load_model(encoder_model, '/home/azureuser/Desktop/fineweb_tmemory_2transformers_e1024c1_d1024_n8_c512_b64x2/checkpoint-200000/model.safetensors')
 
@@ -119,8 +134,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c256-lpad-8k"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c256-lpad-8k"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 def half_data(example):
     example['input_ids'] = example['input_ids'][256:]
@@ -134,7 +149,7 @@ test_dataset = load_from_disk(test_path) #.map(half_data, batched=False, num_pro
 print (len(train_dataset[0]['input_ids']))
 
 batch_size = 64
-n_devices = 2
+n_devices = 1
 #train_dataset = load_from_disk(train_path).take(1000000).map(tokenize_and_preprocess, num_proc=16)
 #test_dataset = load_from_disk(test_path).take(10000).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
@@ -143,7 +158,7 @@ if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer\
+output_dir = f'{checkpoint_root}/fineweb_autoencoding_transformer_information\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -159,7 +174,7 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=20000,
-	learning_rate=4e-4, 
+	learning_rate=2e-4, 
 	fp16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -175,6 +190,8 @@ trainer = transformers.Trainer(
 	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	compute_metrics=compute_hamming_metric,
+	preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )
 
 print (f"training model, saving to {output_dir}")
@@ -187,4 +204,4 @@ shutil.copy(code_path, output_dir)
 print (f"training begun: saving results in {output_dir}")
 model.train()
 trainer.train()
-#trainer.train(output_dir + '/checkpoint-24000')
+#trainer.train(output_dir + '/checkpoint-20000')

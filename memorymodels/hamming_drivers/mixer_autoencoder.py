@@ -92,6 +92,7 @@ class MixerBlock(nn.Module):
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
+
 		if self.causal and not self.multiheaded:
 			# for CLM training, apply lower triangular mask to convolution weights
 			masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
@@ -132,7 +133,6 @@ class AutoencodingMixer(nn.Module):
 				kernel = kernel
 				)
 			for i in range(depth)]
-			)
 	
 		self.decoderblocks = nn.ModuleList(
 			[MixerBlock(
@@ -330,7 +330,6 @@ class VariableMemoryMixer(nn.Module):
 					kernel = 1  # unitary kernel
 					)
 				for i in range(depth)]
-			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if encoder_dim != dim:
 			self.decoder_proj = nn.Linear(encoder_dim, dim)
@@ -390,7 +389,7 @@ class VariableMemoryMixer(nn.Module):
 			decoder_embeds = input_embeddings[:, (c*self.tokenized_length):(c+1)*self.tokenized_length]
 			pad = torch.zeros((input_ids.shape[0], self.n_chunks-c, input_embeddings.shape[2])).to(device)
 			x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1).contiguous() # concatenation on token dim
-			for block in self.decoderblocks:
+		for block in self.decoderblocks:
 				x = block(x)
 			
 			output = self.lm_head(x)
@@ -410,7 +409,6 @@ class VariableMemoryMixer(nn.Module):
 		mean_loss = total_loss / self.n_chunks
 		all_outputs = torch.cat(all_outputs, dim=2) # concat in token dim
 		return mean_loss, all_outputs
-
 
 class RecurrentMemoryMixer(nn.Module):
 
@@ -893,4 +891,3 @@ if __name__ == '__main__':
 	trainer.train()
 	for name, param in model.named_parameters():
 		print (name)
-

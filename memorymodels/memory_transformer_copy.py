@@ -23,7 +23,7 @@ from pathlib import Path
 from hamming_drivers.memory_transformer import VariableMemoryTransformer as OrigVarMemTransformer
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
 from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
-from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
+from memory_transformer import VariableMemoryTransformer, ObjectiveMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
 
@@ -65,7 +65,6 @@ def load_encoder():
 
 @torch.no_grad()
 def hamming(model_output, labels):
-	print (labels)
 	total_metric = 0
 	# assign and shift outputs and labels
 	labels= torch.tensor(labels)[..., 1:]
@@ -109,13 +108,13 @@ llama_config_kwargs = {
 print (llama_config_kwargs)
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
+#model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=False)
 #model = LlamaForCausalLM(configuration)
-load_model(model, '/home/azureuser/fineweb_autoencoding_transformer_512c1_d512_n16_c256_b64x2/checkpoint-200000/model.safetensors')
-encoder = model.encoder.model
+#load_model(model, '/home/azureuser/fineweb_autoencoding_transformer_512c1_d512_n16_c256_b64x2/checkpoint-200000/model.safetensors')
+#encoder = model.encoder.model
 
 #load_model(model, '/home/bbadger/Desktop/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 #encoder = model.model
@@ -126,13 +125,15 @@ context_length = 256
 compression = 1
 n_layers = 16
 n_heads = 4
+# load trained memory transformer
 #model = OrigVarMemTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
-# load the pretrained memory model
-
-#encoder = model.encoder
+model = ObjectiveMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, objective='copy', blank_copy=False)
+load_model(model, '/home/azureuser/fineweb_clm_untrained_memtrans_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
+encoder = model.encoder
 print (encoder)
+
 model = VariableMemoryTransformer(n_vocab, encoder_dim, decoder_dim, n_layers, context_length, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=encoder, no_memory=False, copy=True, blank_copy=False)
-load_model(model, '/home/azureuser/fineweb_blankcopy_memtrans_frozenautoenc_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
+#load_model(model, '/home/azureuser/fineweb_blankcopy_memtrans_frozenautoenc_c256x4_512c1_d512_n16_c256_b32x2x1/checkpoint-100000/model.safetensors')
 
 # no memory control
 #print (model.no_memory)
@@ -157,7 +158,7 @@ if torch.cuda.is_available():
 batch_per_device = 32
 gradient_accumulation_steps = total_batch_size // (n_devices * batch_per_device)
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_copy_curriculum_memtrans_frozenautoenc_c256x4\
+output_dir = f'{checkpoint_root}/fineweb_copy_memtrans_frozenmemenc_c256x4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -179,7 +180,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=100000,
-        #torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(

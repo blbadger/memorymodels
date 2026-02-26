@@ -8,7 +8,7 @@ import mlflow
 
 from datasets import load_dataset, load_from_disk
 import transformers
-from transformers import AutoModel, AutoTokenizer, BertConfig, BertModel, Qwen3Config, Qwen3Model
+from transformers import AutoModel, AutoTokenizer, LlamaConfig, LlamaModel, BertConfig, BertModel, Qwen3Config, Qwen3Model
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -69,7 +69,7 @@ encoder_model = AutoModel.from_pretrained('Qwen/Qwen3-0.6B')
 tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen3-0.6B')
 
 vocab_size = len(tokenizer)
-context_length = 512
+context_length = 256
 encoder_dim = 1024
 decoder_dim = 1024
 n_layers = 28
@@ -86,7 +86,22 @@ bert_config_kwargs = {
 
 # decoder configuration
 configuration = Qwen3Config(**bert_config_kwargs)
-decoder_model = Qwen3Model(configuration)
+encoder_model = Qwen3Model(configuration)
+
+decoder_dim = 512 
+n_layers = 16
+n_heads = 4 
+qwen_config_kwargs = { 
+    'hidden_size': decoder_dim,
+    'intermediate_size': 4*decoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size,
+    'max_position_embeddings': context_length
+}
+# Initializing a LLaMA model
+configuration = LlamaConfig(**qwen_config_kwargs)
+decoder_model = LlamaModel(configuration)
 
 model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
 
@@ -100,12 +115,13 @@ datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path).map(tokenize_and_preprocess, num_proc=32)
 test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(tokenize_and_preprocess, num_proc=16)
 
-batch_size = 16
+total_batch_size = 32768 // context_length
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
 
+batch_size = total_batch_size // n_devices
 # descriptive name for output
 output_dir = f'{checkpoint_root}/fineweb_qwen3_information\
 _{encoder_dim}\
@@ -121,8 +137,8 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=100,
 	eval_steps=4000,
 	logging_steps=500,
-	save_steps=8000,
-	learning_rate=2e-5,
+	save_steps=20000,
+	learning_rate=2e-4,
 	bf16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
@@ -130,7 +146,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=200000,
 	save_safetensors=False,
-#        torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(

@@ -14,7 +14,7 @@ import torch.distributed._shard.checkpoint as dist_cp
 
 from mixer_clm import LanguageMixer
 from mixer_multiconv import MultiHeadedMixer
-from mixer_clm import LanguageMixer
+from mixer_clm_compiled import LanguageMixer as CompLanguageMixer
 from mixer_autoencoder import RecurrentMemoryMixer
 from mixer_autoencoder import AutoencodingMixer, AutoencodingTransfixer, MemoryMixer, ProjMemoryMixer, FrozenMemoryMixer, VariableMemoryMixer
 from mixer_autoencoder import TruncatedModel, RecurrentMemoryMixer
@@ -34,12 +34,12 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
+tokenized_length = 1024
 encoder_dim = 512
-decoder_dim = 512
+decoder_dim = 1024
 n_layers = 16
 compression = 1
-heads = 0
+heads = 4
 kernel = 1
 
 class modelwrap(nn.Module):
@@ -55,7 +55,7 @@ class modelwrap(nn.Module):
 #model = LanguageMixer(n_vocab, decoder_dim, 16, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
 
-model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, torch_compile=True).float().to(device)
+model = CompLanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #encoder =modelwrap(AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False))
 #safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors', strict=False)
 #encoder = encoder.model
@@ -95,8 +95,8 @@ model = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=
 #model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/stack-tokenized-train-c1024-8k"
+test_path = f"{data_root}/stack-tokenized-test-c1024-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
@@ -110,14 +110,14 @@ def get_chunk(example):
 
 mlflow.end_run()
 
-batch_size = 4
+batch_size = 8
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
     n_devices = torch.cuda.device_count()
 
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_test\
+output_dir = f'{checkpoint_root}/stack_mixer_h4\
 _{encoder_dim}\
 c{compression}\
 _d{decoder_dim}\
@@ -128,10 +128,10 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=5000,
+        gradient_accumulation_steps=2,
+	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
-	gradient_accumulation_steps=1,
 	learning_rate=5e-4,
 	fp16=True,
 	bf16=False,

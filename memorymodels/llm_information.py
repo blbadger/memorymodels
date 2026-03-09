@@ -133,7 +133,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=40000,
 	save_safetensors=False,
-        torch_compile=True
+    torch_compile=True
 )
 
 trainer = transformers.Trainer(

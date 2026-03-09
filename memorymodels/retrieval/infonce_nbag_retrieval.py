@@ -16,6 +16,8 @@ from datasets import load_from_disk
 
 from transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
 from memory_transformer import VariableMemoryTransformer
+from accuracy import infonce_accuracy, preprocess_embeddings_for_metrics
+
 
 class RetrievalTransformer(nn.Module):
 
@@ -97,7 +99,7 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		x = self.model(x) # no attention mask for autoencoder training
 		embedding_indices = -1
 		loss = infoNCEloss(x, matching_index=matching_index, embedding_index=embedding_indices)
-		return loss, x
+		return loss, x, matching_index
 
 
 def infoNCEloss(output, matching_index=None, embedding_index=-2, temp=0.02):
@@ -244,6 +246,8 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		eval_dataset=test_dataset,
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+		compute_metrics = infonce_accuracy,
+		preprocess_logits_for_metrics=preprocess_embeddings_for_metrics
 	)
 
 	trainer.train()

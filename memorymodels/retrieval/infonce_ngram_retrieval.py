@@ -16,6 +16,7 @@ from datasets import load_from_disk
 
 from transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
 from memory_transformer import VariableMemoryTransformer
+from accuracy import infonce_accuracy, preprocess_embeddings_for_metrics
 
 class RetrievalTransformer(nn.Module):
 
@@ -243,6 +244,8 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		eval_dataset=test_dataset,
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+		compute_metrics = infonce_accuracy,
+		preprocess_logits_for_metrics=preprocess_embeddings_for_metrics
 	)
 
 	trainer.train()

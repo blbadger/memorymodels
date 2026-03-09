@@ -49,16 +49,16 @@ def decoder_accuracy(logits, index):
 
 @torch.no_grad()
 def infonce_accuracy(embeddings, index):
-	# expects indices to be [b t e]
+	# expects indices to be [b e]
 	embeddings = F.normalize(embeddings, p=2, dim=1).detach()
-	query_embedding = embeddings[0, :]
+	query_embedding = embeddings[:1, :]
 	target_embeddings = embeddings[1:, :]
-	scores = query_embedding @ target_embeddings.T * 100
+	scores = (query_embedding @ target_embeddings.T).flatten()
 	top_index = int(torch.topk(scores, 1).indices[0])
 	if top_index == index:
-		return torch.tensor(1)
+		return torch.tensor(1.).to(embeddings.device)
 	else:
-		return torch.tensor(0)
+		return torch.tensor(0.).to(embeddings.device)
 
 
 if __name__ == '__main__':

@@ -19,32 +19,32 @@ from memory_transformer import VariableMemoryTransformer
 
 class RetrievalTransformer(nn.Module):
 
-	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
+	def __init__(self, model, pad_token_id=1, padding_side='right', nbag_size=7):
 		super().__init__()
 		self.model = model.model if isinstance(model, LlamaForCausalLM) else model
-		self.ngram_size = ngram_size
+		self.nbag_size = nbag_size
 		self.pad_token_id = pad_token_id
 		self.padding_side=padding_side
 
-	def select_ngram(self, input_ids):
+	def select_nbag(self, input_ids):
 		# expects inputs to be of shape [b, t]
 		sample_index = random.randint(1, input_ids.shape[0]-1) # the first sample will be replaced with the input
-		ngram_index = random.randint(0, input_ids.shape[1] - self.ngram_size)
-		sample_ngram = input_ids[sample_index, ngram_index: ngram_index + self.ngram_size]
-		return sample_index, sample_ngram
+		random_bag = torch.randperm(input_ids.shape[-1])[:self.nbag_size]
+		sample_nbag = input_ids[sample_index, random_bag]
+		return sample_index, sample_nbag
 
 	def forward(self, input_ids, attention_mask, labels=None, **kwargs):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
-		matching_index, sample_ngram = self.select_ngram(input_ids)
-		pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
+		matching_index, sample_ngram = self.select_nbag(input_ids)
+		pad_ngram = (torch.ones(input_ids.shape[1] - self.nbag_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
 		pad_attention = torch.zeros
 		if self.padding_side == 'right':
 			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
-			attention_ngram = torch.cat((torch.ones(self.ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+			attention_ngram = torch.cat((torch.ones(self.nbag_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.nbag_size, dtype=torch.long)), dim=0).to(input_ids.device)
 		elif self.padding_side == 'left':
 			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
-			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.nbag_size, dtype=torch.long), torch.ones(self.nbag_size, dtype=torch.long)), dim=0).to(input_ids.device)
 
 		input_ids[0] = sample_ngram # zeroth batch element is the query phrase
 		attention_mask[0] = attention_ngram
@@ -55,7 +55,7 @@ class RetrievalTransformer(nn.Module):
 
 class RetrievalAutoencoderTransformer(nn.Module):
 
-	def __init__(self, model, pad_token_id=1, padding_side='right', ngram_size=7):
+	def __init__(self, model, pad_token_id=1, padding_side='right', nbag_size=7):
 		super().__init__()
 		if not isinstance(model.encoder, LlamaModel):
 			self.wte = model.wte
@@ -63,32 +63,33 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			self.wte = None
 
 		self.model = model.encoder 
-		self.ngram_size = ngram_size
+		self.nbag_size = nbag_size
 		self.pad_token_id = pad_token_id
 		self.padding_side = padding_side
 
-	def select_ngram(self, input_ids):
+	def select_nbag(self, input_ids):
 		# expects inputs to be of shape [b, t]
 		sample_index = random.randint(1, input_ids.shape[0]-1) # the first sample will be replaced with the input
-		ngram_index = random.randint(0, input_ids.shape[1] - self.ngram_size)
-		sample_ngram = input_ids[sample_index, ngram_index: ngram_index + self.ngram_size]
-		return sample_index, sample_ngram
+		random_bag = torch.randperm(input_ids.shape[-1])[:self.nbag_size]
+		sample_nbag = input_ids[sample_index, random_bag]
+		return sample_index, sample_nbag
+
 
 	def forward(self, input_ids, attention_mask, labels=None, **kwargs):
 		if input_ids.dim() > 2:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
-		matching_index, sample_ngram = self.select_ngram(input_ids)
-		pad_ngram = (torch.ones(input_ids.shape[1] - self.ngram_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
+		matching_index, sample_nbag = self.select_nbag(input_ids)
+		pad_nbag = (torch.ones(input_ids.shape[1] - self.nbag_size) * self.pad_token_id).to(torch.long).to(input_ids.device)
 		pad_attention = torch.zeros
 		if self.padding_side == 'right':
-			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
-			attention_ngram = torch.cat((torch.ones(self.ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+			sample_nbag = torch.cat((sample_nbag, pad_nbag), dim=0)
+			attention_nbag = torch.cat((torch.ones(self.nbag_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.nbag_size, dtype=torch.long)), dim=0).to(input_ids.device)
 		elif self.padding_side == 'left':
-			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
-			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+			sample_ngram = torch.cat((pad_nbag, sample_ngram), dim=0)
+			attention_nbag = torch.cat((torch.zeros(input_ids.shape[1] - self.nbag_size, dtype=torch.long), torch.ones(self.nbag_size, dtype=torch.long)), dim=0).to(input_ids.device)
 
-		input_ids[0] = sample_ngram # zeroth batch element is the query phrase
-		attention_mask[0] = attention_ngram
+		input_ids[0] = sample_nbag # zeroth batch element is the query phrase
+		attention_mask[0] = attention_nbag
 		if self.wte:
 			x = self.wte(input_ids)
 		else:
@@ -152,10 +153,10 @@ if __name__ == '__main__':
 
 	tokenized_length = 256
 	dim = 512
-	n_layers = 16
+	n_layers = 8
 	n_heads = 4
 	n_context = tokenized_length
-	ngram = 7
+	nbag = 7
 
 	vocab_size = len(tokenizer)
 	llama_config_kwargs = {
@@ -173,28 +174,28 @@ if __name__ == '__main__':
 	#model = LlamaForCausalLM(configuration)
 	#load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
 
-	model = VariableMemoryTransformer(vocab_size, 512, 512, n_layers, n_context, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
+	#model = VariableMemoryTransformer(vocab_size, 512, 512, n_layers, n_context, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
 
-	load_model(model, f"{checkpoint_root}/fineweb_copy_memtrans_c256x4_512c1_d512_n16_c256_b8x4x2/checkpoint-100000/model.safetensors")
+	#load_model(model, f"{checkpoint_root}/fineweb_copy_memtrans_c256x4_512c1_d512_n16_c256_b8x4x2/checkpoint-100000/model.safetensors")
 
-	model = RetrievalTransformer(model.encoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	#model = RetrievalTransformer(model, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
-	train_path = f"{data_root}/fineweb-edu-tokenized-train-lpad-c512"
-	test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
+	train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+	test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 	# datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 	# train_dataset = load_from_disk(train_path)
 	# test_dataset = load_from_disk(test_path)
 	#decoder_dim=512
-	#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	#autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
-	#load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-	#model = RetrievalAutoencoderTransformer(autoencoder, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	autoencoder = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
+	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+	model = RetrievalAutoencoderTransformer(autoencoder, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
 	def half_data(example):
-	    example['input_ids'] = example['input_ids'][256:]
+	    example['input_ids'] = example['input_ids'][:256]
 	    if 'attention_mask' in example:
-	        example['attention_mask'] = example['attention_mask'][256:]
+	        example['attention_mask'] = example['attention_mask'][:256]
 	    return example
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
@@ -212,7 +213,7 @@ if __name__ == '__main__':
 	    n_devices = torch.cuda.device_count()
 
 	# descriptive name for output
-	output_dir = f'{checkpoint_root}/fineweb_pretrainedmemenc_{ngram}gram_infonce\
+	output_dir = f'{checkpoint_root}/fineweb_pretrainedauto_{nbag}bag_infonce\
 _{dim}\
 _n{n_layers}\
 _c{tokenized_length}_b{batch_size}x{n_devices}'
@@ -221,10 +222,10 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		num_train_epochs=2,
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
-		warmup_steps=50,
+		warmup_steps=500,
 		eval_steps=1000,
 		save_steps=10000,
-		logging_steps=50,
+		logging_steps=500,
 		gradient_accumulation_steps=1,
 		learning_rate=1e-4,
 		fp16=True,

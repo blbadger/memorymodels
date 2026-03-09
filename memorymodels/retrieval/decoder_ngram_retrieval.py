@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import warnings
 import datasets
 from datasets import load_from_disk
-
+import shutil
 from transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
 
 class RetrievalTransformer(nn.Module):
@@ -123,7 +123,8 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		all_ngrams = torch.stack((all_ngrams), dim=0).to(input_ids.device)
 		if self.wte:
 			all_ngrams = self.wte(all_ngrams)
-		sample_embeddings = self.encoder(all_ngrams)[:, -1, :]
+		sample_embeddings = self.encoder(all_ngrams).last_hidden_state
+		sample_embeddings = sample_embeddings[:, -1, :] 
 		embedding_swap_indices = [n*self.embed_comparison for n in range(n_microbatches)]
 		embeddings[embedding_swap_indices] = sample_embeddings
 		# reshape embeddings into minibatches
@@ -174,7 +175,7 @@ if __name__ == '__main__':
 
 	tokenized_length = 256
 	dim = 512
-	n_layers = 8
+	n_layers = 16
 	n_heads = 4
 	n_context = tokenized_length
 	ngram = 7
@@ -190,30 +191,44 @@ if __name__ == '__main__':
 	print (llama_config_kwargs)
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
+	embed_comparison = 32
 
 	# loads a pretrained (on FineWeb) CLM model
-	# model = LlamaForCausalLM(configuration)
-	# load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
-	# model = RetrievalTransformer(model, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	model = LlamaForCausalLM(configuration)
+	load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
+	encoder = model.model #LlamaModel object
+	print (encoder)
+	decoder_config_kwargs = { 
+                'hidden_size':dim,
+                'intermediate_size': 4*dim,
+                'num_hidden_layers': n_layers//2,
+                'num_attention_heads': n_heads,
+                'vocab_size': vocab_size
+        }
+	decoder_config = LlamaConfig(**decoder_config_kwargs)
+	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=embed_comparison)
+	autoencoder = UnrolledAutoencodingTransformer(vocab_size, dim, encoder, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
+	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder_model, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
+	#model = RetrievalTransformer(model, ngram_size=ngram, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+
 
 	train_path = f"{data_root}/fineweb-edu-tokenized-train-lpad-c512"
 	test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
 	# datasets.config.IN_MEMORY_MAX_SIZE = 1e9
 	# train_dataset = load_from_disk(train_path)
 	# test_dataset = load_from_disk(test_path)
-	decoder_dim = 512
-	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False).to(device)
-	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-	decoder = LlamaModel(configuration)
+	#decoder_dim = 512
+	#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	#autoencoder = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False).to(device)
+	#load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+	#decoder = LlamaModel(configuration)
 
-	embed_comparison = 32
-	model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
+	#model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
 	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
-	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=128)
-	test_dataset = load_from_disk(test_path).take(10000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
+	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64) # 1000000
+	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
 	
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
@@ -227,10 +242,10 @@ if __name__ == '__main__':
 		n_devices = torch.cuda.device_count()
 
 	# descriptive name for output
-	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_infonce\
-	_{dim}\
-	_n{n_layers}\
-	_c{tokenized_length}_b{batch_size}x{n_devices}'
+	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_decoder\
+_{dim}\
+_n{n_layers}\
+_c{tokenized_length}_b{batch_size}x{n_devices}'
 
 	training_arguments = transformers.TrainingArguments(
 		num_train_epochs=2,
@@ -241,7 +256,7 @@ if __name__ == '__main__':
 		eval_steps=1000,
 		save_steps=10000,
 		logging_steps=500,
-		learning_rate=0.5e-4,
+		learning_rate=1e-4,
 		fp16=True,
 		eval_strategy='steps',
 		output_dir=output_dir,
@@ -259,5 +274,11 @@ if __name__ == '__main__':
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 	)
+	print (f"training model, saving to {output_dir}")
+	# save driver code snapshot in checkpoint dir
+	code_path = os.path.abspath(__file__)
+	if not os.path.isdir(output_dir):
+		os.mkdir(output_dir)
+	shutil.copy(code_path, output_dir)
 
 	trainer.train()

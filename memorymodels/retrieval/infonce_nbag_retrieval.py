@@ -252,5 +252,4 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		#preprocess_logits_for_metrics=preprocess_embeddings_for_metrics
 	)
 
-	print (trainer.evaluate())
-	trainer.train(output_dir + '/checkpoint-60000')
+	trainer.train(output_dir + '/checkpoint-100000')

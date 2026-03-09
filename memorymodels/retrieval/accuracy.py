@@ -54,7 +54,7 @@ def infonce_accuracy(embeddings, index):
 	query_embedding = embeddings[:1, :]
 	target_embeddings = embeddings[1:, :]
 	scores = (query_embedding @ target_embeddings.T).flatten()
-	top_index = int(torch.topk(scores, 1).indices[0])
+	top_index = int(torch.topk(scores, 1).indices[0]) + 1
 	if top_index == index:
 		return torch.tensor(1.).to(embeddings.device)
 	else:

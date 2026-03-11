@@ -209,7 +209,7 @@ if __name__ == '__main__':
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 
-	batch_size = 32
+	batch_size = 128
 	n_devices = 4
 
 	# get number of devices (assumes that all visible devices are used for training)
@@ -252,4 +252,4 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		#preprocess_logits_for_metrics=preprocess_embeddings_for_metrics
 	)
 
-	trainer.train(output_dir + '/checkpoint-100000')
+	trainer.train()

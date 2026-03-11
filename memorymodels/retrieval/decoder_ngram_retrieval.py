@@ -136,7 +136,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		else:
 			output = self.decoder(inputs_embeds=embeddings).last_hidden_state # assumes a LlamaModel
 		output = self.retrieval_head(output)
-		loss = self.cel(output, labels)
+		if not self.training:
+			loss = torch.sum(torch.argmax(output) == all_indices) / n_microbatches
+		else:
+			loss = self.cel(output, labels)
 		return loss, output
 
 def half_data(example):

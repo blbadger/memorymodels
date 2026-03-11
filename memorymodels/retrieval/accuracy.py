@@ -40,7 +40,7 @@ def preprocess_embeddings_for_metrics(embeddings, labels):
     Original Trainer has a memory leak: a workaround to avoid saving all tensors
     """
     embeddings = embeddings[:, index, :]
-    return embheddings, labels
+    return embeddings, labels
 
 @torch.no_grad()
 def decoder_accuracy(logits, index):

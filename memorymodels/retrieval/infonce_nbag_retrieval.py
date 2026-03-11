@@ -52,7 +52,11 @@ class RetrievalTransformer(nn.Module):
 		attention_mask[0] = attention_ngram
 		x = self.model(input_ids, attention_mask=attention_mask).last_hidden_state
 		embedding_indices = -1
-		loss = infoNCEloss(x, matching_index=matching_index, embedding_index=embedding_indices)
+		if not self.training:
+			loss = infonce_accuracy(x[:, -1, :], matching_index)
+		else:
+			loss = infoNCEloss(x, matching_index=matching_index, embedding_index=embedding_indices)
+
 		return loss, x
 
 class RetrievalAutoencoderTransformer(nn.Module):
@@ -98,9 +102,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			x = input_ids
 		x = self.model(x) # no attention mask for autoencoder training
 		embedding_indices = -1
-		loss = infoNCEloss(x, matching_index=matching_index, embedding_index=embedding_indices)
 		if not self.training:
 			loss = infonce_accuracy(x[:, -1, :], matching_index)
+		else:
+			loss = infoNCEloss(x, matching_index=matching_index, embedding_index=embedding_indices)
 		return loss, x
 
 

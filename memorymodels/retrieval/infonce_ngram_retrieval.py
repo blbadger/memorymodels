@@ -14,9 +14,9 @@ import warnings
 import datasets
 from datasets import load_from_disk
 
-from transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
-from memory_transformer import VariableMemoryTransformer
-from accuracy import infonce_accuracy, preprocess_embeddings_for_metrics
+from .transformer_autoencoder import UnrolledAutoencodingTransformer, AbbreviatedModel
+from .memory_transformer import VariableMemoryTransformer
+from .accuracy import infonce_accuracy, preprocess_embeddings_for_metrics
 
 class RetrievalTransformer(nn.Module):
 

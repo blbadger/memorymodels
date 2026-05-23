@@ -30,7 +30,7 @@ class RetrievalTransformer(nn.Module):
 
 	def select_nbag(self, input_ids):
 		# expects inputs to be of shape [b, t]
-		sample_index = random.randint(1, input_ids.shape[0]-1) # the first sample will be replaced with the input
+		sample_index = torch.randint(1, input_ids.shape[0]-1, (1,)) # the first sample will be replaced with the input
 		random_bag = torch.randperm(input_ids.shape[-1])[:self.nbag_size]
 		sample_nbag = input_ids[sample_index, random_bag]
 		return sample_index, sample_nbag
@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
 	tokenized_length = 256
 	dim = 512
-	n_layers = 8
+	n_layers = 16
 	n_heads = 4
 	n_context = tokenized_length
 	nbag = 7
@@ -180,14 +180,14 @@ if __name__ == '__main__':
 	configuration = LlamaConfig(**llama_config_kwargs)
 
 	# loads a pretrained (on FineWeb) CLM model
-	#model = LlamaForCausalLM(configuration)
-	#load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
+	model = LlamaForCausalLM(configuration)
+	load_model(model, f"{checkpoint_root}/fineweb_training/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
 
 	#model = VariableMemoryTransformer(vocab_size, 512, 512, n_layers, n_context, n_heads=n_heads, n_chunks=4, fixed_memory=True, frozen_encoder=None, no_memory=False, copy=True, blank_copy=False)
 
 	#load_model(model, f"{checkpoint_root}/fineweb_copy_memtrans_c256x4_512c1_d512_n16_c256_b8x4x2/checkpoint-100000/model.safetensors")
 
-	#model = RetrievalTransformer(model, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	model = RetrievalTransformer(model, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
 	train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 	test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
@@ -195,11 +195,12 @@ if __name__ == '__main__':
 	# train_dataset = load_from_disk(train_path)
 	# test_dataset = load_from_disk(test_path)
 	#decoder_dim=512
-	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-	autoencoder = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
-	load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
-	model = RetrievalAutoencoderTransformer(autoencoder, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
+	
+	#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	#decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	#autoencoder = UnrolledAutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=tokenized_length, compression=1, freeze_encoder=False)
+	#load_model(autoencoder, '/home/bbadger/Desktop/fineweb_autoencoding_transformer_512c1_d512_n8_c256_b32x4/checkpoint-200000/model.safetensors')
+	#model = RetrievalAutoencoderTransformer(autoencoder, nbag_size=nbag, padding_side='right', pad_token_id=tokenizer.pad_token_id)
 
 	def half_data(example):
 	    example['input_ids'] = example['input_ids'][:256]
@@ -222,7 +223,7 @@ if __name__ == '__main__':
 	    n_devices = torch.cuda.device_count()
 
 	# descriptive name for output
-	output_dir = f'{checkpoint_root}/fineweb_pretrainedauto_{nbag}bag_infonce\
+	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{nbag}bag_infonce\
 _{dim}\
 _n{n_layers}\
 _c{tokenized_length}_b{batch_size}x{n_devices}'
@@ -244,7 +245,7 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
-	#	torch_compile=True
+		torch_compile=True
 	)
 
 	trainer = transformers.Trainer(

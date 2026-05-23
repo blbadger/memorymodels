@@ -22,7 +22,7 @@ from pathlib import Path
 from peft import LoraConfig, TaskType, get_peft_model
 
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
-from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer, AllAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
@@ -65,6 +65,12 @@ def tokenize_and_preprocess(example):
 	example['attention_mask'] = tokens['attention_mask']
 	return example
 
+def half_data(example):
+    example['input_ids'] = example['input_ids'][256:]
+    if 'attention_mask' in example:
+        example['attention_mask'] = example['attention_mask'][256:]
+    return example
+
 tokenizer = AutoTokenizer.from_pretrained(f'{data_root}/tokenizer_fineweb_8k')
 tokenizer.pad_token = tokenizer.eos_token
 vocab_size = len(tokenizer)
@@ -81,53 +87,30 @@ llama_config_kwargs = {
     'vocab_size': vocab_size,
     'max_position_embeddings': context_length
 }
-print (llama_config_kwargs)
-# Initializing a LLaMA model
+
 configuration = LlamaConfig(**llama_config_kwargs)
-
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=1, freeze_encoder=False)
-
 encoder_model = LlamaForCausalLM(configuration)
-#safetensors.torch.load_model(encoder_model, '/home/badger/contrastive_finemath_transformer_512_n16_b32_lpad_penult/model.safetensors', strict=False) # no lm_head for retr models
-encoder_model = AbbreviatedModel(encoder_model, tokenized_length=context_length)
-#encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-llama_config_kwargs = {
-    'hidden_size':decoder_dim,
-    'intermediate_size': 4*decoder_dim,
-    'num_hidden_layers': 8,
-    'num_attention_heads': n_heads,
-    'vocab_size': vocab_size
-}
-configuration = LlamaConfig(**llama_config_kwargs)
+load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
+encoder_model = encoder_model.model
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length,                                                                                 compression=1, freeze_encoder=True)
+model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length)                                                                             compression=1, freeze_encoder=True)
 
 ## unrolled embedding transformer autoencoder
 #encoder_model = LlamaModel(configuration).model
 ##decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #decoder_model = LlamaModel(configuration).model
 #model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
-load_model(model, f'{data_root}/fineweb_frozen_untrained_retrievalenc_unrolledauto_512c1_d512_n8_c512_b32x4/checkpoint-200000/model.safetensors')
 
-#only test
-train_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-lpad-c512"
-
-def half_data(example):
-    example['input_ids'] = example['input_ids'][256:]
-    if 'attention_mask' in example:
-        example['attention_mask'] = example['attention_mask'][256:]
-    return example
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path).map(half_data, num_proc=16)
-test_dataset = load_from_disk(test_path).filter(lambda x: x['input_ids'][-1] != 1, num_proc=16).map(half_data, num_proc=16)
+train_dataset = load_from_disk(train_path)
+test_dataset = load_from_disk(test_path)
 
-global_batch_size = 32768 // context_length
-n_devices = 2
+global_batch_size = 128
+n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
 	n_devices = torch.cuda.device_count()
@@ -135,7 +118,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_llama1b_frozenwte_information\
+output_dir = f'{checkpoint_root}/fineweb_allembed_information\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -146,10 +129,10 @@ training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
-	warmup_steps=100,
+	warmup_steps=500,
 	eval_steps=4000,
 	logging_steps=500,
-	save_steps=20000,
+	save_steps=10000,
 	learning_rate=2e-4,
 	bf16=True,
 	eval_strategy='steps',
@@ -158,7 +141,7 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=40000,
 	save_safetensors=False,
-#        torch_compile=True
+    torch_compile=True
 )
 
 trainer = transformers.Trainer(

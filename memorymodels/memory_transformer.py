@@ -622,6 +622,7 @@ class MemoryTransformer(nn.Module):
 				encoder_embedding += torch.rand(encoder_embedding.shape).to(device)*(2**-3) # assumes e4m3 target quant
 			if self.combination_dim == 'token':
 				encoder_embedding = self.up(encoder_embedding)
+				
 		decoder_embeds = self.decoder_wte(input_ids)
 		if self.combination_dim == 'token':
 			if self.decoder_proj:

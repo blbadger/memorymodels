@@ -93,7 +93,7 @@ class AbbreviatedModel(nn.Module):
 
 class UnrolledAutoencodingTransformer(nn.Module):
        
-        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False, ):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
@@ -153,6 +153,68 @@ class UnrolledAutoencodingTransformer(nn.Module):
                         embedding_stack.append(sliding_window)
                 encoder_embedding = torch.cat(embedding_stack, dim=1)
                 encoder_embedding = self.projection(encoder_embedding)
+
+                x = encoder_embedding
+                if isinstance(self.decoder, AbbreviatedModel):
+                    x = self.decoder(x)
+                else:
+                    x = self.decoder(inputs_embeds=x).last_hidden_state
+
+                output = self.lm_head(x)
+                output = rearrange(output, 'b t e -> b e t')
+                if labels is not None:
+                        loss = self.cel(output, labels)
+                else:
+                        loss = 0
+                return loss, output
+
+class AllAutoencodingTransformer(nn.Module):
+       
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
+                super().__init__()
+                self.wte = nn.Embedding(n_vocab, dim)
+                self.encoder = encoder_model
+                if freeze_encoder:
+                        for _, param in self.encoder.named_parameters():
+                                param.requires_grad = False
+
+                self.decoder = decoder_model
+                self.cel = nn.CrossEntropyLoss()
+                self.tokenized_length = tokenized_length
+                self.dim = dim
+                if decoder_dim and decoder_dim != dim:
+                    self.bridge_proj = nn.Linear(dim, decoder_dim)
+                    self.decoder_dim = decoder_dim
+                else:
+                    decoder_dim = dim
+
+                self.lm_head = nn.Linear(decoder_dim, n_vocab, bias=False)
+                self.compression = False
+                if compression > 1:
+                        self.compression = True
+                        self.down = nn.Linear(dim, dim//compression)
+                        self.up = nn.Linear(dim//compression, dim)
+                        
+                self.random_input = random
+                self.n_vocab = n_vocab
+
+        def forward(self, input_ids, labels=None, attention_mask=None):
+                if self.random_input:
+                        x = torch.randint(1, self.n_vocab, input_ids.shape)
+                else:
+                        x = input_ids
+                x = x.to(device).squeeze(1)
+                if isinstance(self.encoder, AbbreviatedModel):
+                    x = self.wte(x)
+                    x = self.encoder(x)
+                else:
+                    x = self.encoder(x).last_hidden_state
+                
+                encoder_embedding = x # dim=[batch, token, hidden]
+
+                if self.compression:
+                        encoder_embedding = self.down(encoder_embedding)
+                        encoder_embedding = self.up(encoder_embedding)
 
                 x = encoder_embedding
                 if isinstance(self.decoder, AbbreviatedModel):

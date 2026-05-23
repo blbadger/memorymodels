@@ -170,7 +170,7 @@ class UnrolledAutoencodingTransformer(nn.Module):
 
 class AllAutoencodingTransformer(nn.Module):
        
-        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False):
+        def __init__(self, n_vocab, dim, encoder_model, decoder_model, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_encoder=False, noise_embeddings=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
@@ -197,6 +197,7 @@ class AllAutoencodingTransformer(nn.Module):
                         
                 self.random_input = random
                 self.n_vocab = n_vocab
+                self.noise_embeddings=noise_embeddings
 
         def forward(self, input_ids, labels=None, attention_mask=None):
                 if self.random_input:
@@ -215,6 +216,9 @@ class AllAutoencodingTransformer(nn.Module):
                 if self.compression:
                         encoder_embedding = self.down(encoder_embedding)
                         encoder_embedding = self.up(encoder_embedding)
+
+                if self.noise_embeddings:
+                    x += torch.randn(x.shape).to(x.device).to(x.dtype)
 
                 x = encoder_embedding
                 if isinstance(self.decoder, AbbreviatedModel):

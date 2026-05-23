@@ -93,7 +93,7 @@ encoder_model = LlamaForCausalLM(configuration)
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
 encoder_model = encoder_model.model
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length)                                                                             compression=1, freeze_encoder=True)
+model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=256, freeze_encoder=True, noise_embeddings=False)
 
 ## unrolled embedding transformer autoencoder
 #encoder_model = LlamaModel(configuration).model
@@ -118,7 +118,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_allembed_information\
+output_dir = f'{checkpoint_root}/fineweb_allembed_information_c256\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -134,14 +134,14 @@ training_arguments = transformers.TrainingArguments(
 	logging_steps=500,
 	save_steps=10000,
 	learning_rate=2e-4,
-	bf16=True,
+	fp16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=40000,
+	max_steps=200000,
 	save_safetensors=False,
-    torch_compile=True
+        torch_compile=True
 )
 
 trainer = transformers.Trainer(
@@ -158,9 +158,9 @@ trainer = transformers.Trainer(
 code_path = os.path.abspath(__file__)
 if not os.path.isdir(output_dir):
 	os.mkdir(output_dir)
-#shutil.copy(code_path, output_dir)
+shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-#trainer.train(output_dir + '/checkpoint-40000')
+trainer.train()
 print (trainer.evaluate())

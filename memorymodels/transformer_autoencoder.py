@@ -261,7 +261,7 @@ class AllAutoencodingTransformer(nn.Module):
 
 class SecretTransformer(nn.Module):
        
-        def __init__(self, n_vocab, dim, encoder_model, clm_decoder, inversion_decoder, clm_head, inversion_head, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_decoders=True, noise_embeddings=False):
+        def __init__(self, n_vocab, dim, encoder_model, clm_decoder, inversion_decoder, clm_head, clm_model, inversion_head, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_decoders=True, noise_embeddings=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
@@ -291,8 +291,12 @@ class SecretTransformer(nn.Module):
                 self.random_input = random
                 self.n_vocab = n_vocab
                 self.noise_embeddings=noise_embeddings
-                self.clm_head = clm_head
                 self.inversion_head=inversion_head
+                self.clm_model = clm_model
+
+                for _, param in self.clm_modl.named_parameters():
+                        param.requires_grad = False
+
                 #for _, param in self.clm_head.named_parameters():
                 #        param.requires_grad = False
                 #for _, param in self.inversion_head.named_parameters():
@@ -336,11 +340,12 @@ class SecretTransformer(nn.Module):
                 inverted_output = self.inversion_head(inverted_x)
                 clm_output = rearrange(clm_output, 'b t e -> b e t')
                 inverted_output = rearrange(inverted_output, 'b t e -> b e t')
+
+                original_clm_output = self.clm_model(x).logits
+
                 if labels is not None:
-                        shifted_clm_output = clm_output[..., :-1].contiguous()
-                        shifted_labels = labels[:, 1:].contiguous()
-                        #loss = self.cel(shifted_clm_output, shifted_labels) # starts at 0
-                        #print (f'Cel loss: {loss}')
+                        loss = self.cel(clm_output, original_clm_output) # starts at 0
+                        print (f'Cel loss: {loss}')
                         inversion_loss = -self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
                         print (f'Inversion loss: {inversion_loss}')
                         loss = inversion_loss 

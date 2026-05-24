@@ -97,7 +97,7 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
-print (clm_head)
+clm_model = encoder_model
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
@@ -138,6 +138,7 @@ secret_model = SecretTransformer(
 	decoder_dim,
 	encoder,
 	clm_decoder,
+	clm_model,
 	inversion_decoder,
 	clm_head,
 	inversion_head

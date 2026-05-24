@@ -22,7 +22,7 @@ from pathlib import Path
 from peft import LoraConfig, TaskType, get_peft_model
 
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
-from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer, AllAutoencodingTransformer
+from transformer_autoencoder import AbbreviatedModel, SuffixModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer, AllAutoencodingTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
@@ -77,9 +77,9 @@ vocab_size = len(tokenizer)
 context_length = 512
 encoder_dim = 512
 decoder_dim = 512
-n_layers = 8
-n_heads = 4
-llama_config_kwargs = { 
+n_layers = 16
+n_heads = 8
+encoder_config_kwargs = { 
     'hidden_size': decoder_dim,
     'intermediate_size': 4*decoder_dim,
     'num_hidden_layers': n_layers,
@@ -88,18 +88,38 @@ llama_config_kwargs = {
     'max_position_embeddings': context_length
 }
 
-configuration = LlamaConfig(**llama_config_kwargs)
+encoder_configuration = LlamaConfig(**encoder_config_kwargs)
 encoder_model = LlamaForCausalLM(configuration)
-load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
-encoder_model = encoder_model.model
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=256, freeze_encoder=True, noise_embeddings=False)
 
-## unrolled embedding transformer autoencoder
-#encoder_model = LlamaModel(configuration).model
-##decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-#decoder_model = LlamaModel(configuration).model
-#model = UnrolledAutoencodingTransformer(vocab_size, encoder_dim, encoder_model, decoder_model, decoder_dim=decoder_dim, tokenized_length=context_length, compression=1, freeze_encoder=True)
+load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
+encoder_model = encoder_model.model
+# take half of the layers
+encoder_model.config.num_hidden_layers = 8 
+
+n_layers = 8
+n_heads = 4
+decoder_config_kwargs = { 
+    'hidden_size': decoder_dim,
+    'intermediate_size': 4*decoder_dim,
+    'num_hidden_layers': n_layers,
+    'num_attention_heads': n_heads,
+    'vocab_size': vocab_size,
+    'max_position_embeddings': context_length
+}
+
+decoder_configuration = LlamaConfig(**decoder_config_kwargs)
+
+decoder_model = AbbreviatedModel(LlamaForCausalLM(decoder_configuration), tokenized_length=context_length)
+
+model = AllAutoencodingTransformer(vocab_size, 
+	decoder_dim, 
+	encoder_model, 
+	decoder_model, 
+	tokenized_length=context_length, 
+	compression=1, 
+	freeze_encoder=True, 
+	noise_embeddings=False, 
+)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"

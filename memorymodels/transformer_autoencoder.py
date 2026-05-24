@@ -90,6 +90,31 @@ class AbbreviatedModel(nn.Module):
                         x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
                 return x
 
+class SuffixModel(nn.Module):
+
+        def __init__(self, model, depth=16, first_layer=8, tokenized_length=512):
+                super().__init__()
+                if isinstance(model, LlamaForCausalLM):
+                        self.model = model.model
+                elif isinstance(model, LlamaModel):
+                        self.model = model
+                elif isinstance(model, AbbreviatedModel):
+                        self.model = model
+                else:
+                        raise TypeError('model type not recognized')
+
+                self.depth = depth
+                self.position_ids = torch.tensor([[i for i in range(tokenized_length)]])
+                self.first_layer = first_layer
+
+        def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
+                # 'input_ids' is actually a float tensor, post-wte transformation
+                x = input_ids.to(device)
+                position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
+                position_embeddings = self.model.rotary_emb(x, position_ids)
+                for i in range(self.first_layer, self.depth):
+                        x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                return x
 
 class UnrolledAutoencodingTransformer(nn.Module):
        
@@ -230,6 +255,85 @@ class AllAutoencodingTransformer(nn.Module):
                 output = rearrange(output, 'b t e -> b e t')
                 if labels is not None:
                         loss = self.cel(output, labels)
+                else:
+                        loss = 0
+                return loss, output
+
+class SecretTransformer(nn.Module):
+       
+        def __init__(self, n_vocab, dim, encoder_model, clm_decoder, inversion_decoder, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_decoders=True, noise_embeddings=False):
+                super().__init__()
+                self.wte = nn.Embedding(n_vocab, dim)
+                self.encoder = encoder_model
+                self.clm_decoder = clm_decoder
+                self.inversion_decoder = inversion_decoder
+                if freeze_decoders:
+                        for _, param in self.clm_dencoder.named_parameters():
+                                param.requires_grad = False
+                        for _, param in self.inversion_dencoder.named_parameters():
+                                param.requires_grad = False
+
+                self.cel = nn.CrossEntropyLoss()
+                self.tokenized_length = tokenized_length
+                self.dim = dim
+                if decoder_dim and decoder_dim != dim:
+                    self.bridge_proj = nn.Linear(dim, decoder_dim)
+                    self.decoder_dim = decoder_dim
+                else:
+                    decoder_dim = dim
+
+                self.compression = False
+                if compression > 1:
+                        self.compression = True
+                        self.down = nn.Linear(dim, dim//compression)
+                        self.up = nn.Linear(dim//compression, dim)
+                        
+                self.random_input = random
+                self.n_vocab = n_vocab
+                self.noise_embeddings=noise_embeddings
+
+        def forward(self, input_ids, labels=None, attention_mask=None):
+                if self.random_input:
+                        x = torch.randint(1, self.n_vocab, input_ids.shape)
+                else:
+                        x = input_ids
+                x = x.to(device).squeeze(1)
+                if isinstance(self.encoder, AbbreviatedModel):
+                    x = self.wte(x)
+                    x = self.encoder(x)
+                else:
+                    x = self.encoder(x).last_hidden_state
+                
+                encoder_embedding = x # dim=[batch, token, hidden]
+
+                if self.compression:
+                        encoder_embedding = self.down(encoder_embedding)
+                        encoder_embedding = self.up(encoder_embedding)
+
+                if self.noise_embeddings:
+                    x += torch.randn(x.shape).to(x.device).to(x.dtype)
+
+                # expects lm_head to be pretrained for both inversion and clm models
+                x = encoder_embedding
+                if isinstance(self.intersion_decoder, AbbreviatedModel):
+                    inverted_x = self.inversion_decoder(x)
+                else:
+                    inverted_x = self.inversion_decoder(inputs_embeds=x)
+
+                if isinstance(self.intersion_decoder, AbbreviatedModel):
+                    clm_x = self.clm_decoder(x)
+                else:
+                    clm_x = self.clm_decoder(inputs_embeds=x)
+
+                clm_output = self.clm_lm_head(clm_x)
+                inverted_output = self.inversion_lm_head(inverted_x)
+                clm_output = rearrange(clm_output, 'b t e -> b e t')
+                inverted_output = rearrange(inverted_output, 'b t e -> b e t')
+                if labels is not None:
+                        shifted_clm_output = clm_output[:, :, :-1]
+                        shifted_labels = labels[:, 1:]
+                        loss = self.cel(shifted_clm_output, shifted_labels)
+                        loss -= self.cel(inverted_output, labels)
                 else:
                         loss = 0
                 return loss, output

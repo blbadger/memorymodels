@@ -291,8 +291,13 @@ class SecretTransformer(nn.Module):
                 self.random_input = random
                 self.n_vocab = n_vocab
                 self.noise_embeddings=noise_embeddings
-                self.clm_head = clm_head,
+                self.clm_head = clm_head
                 self.inversion_head=inversion_head
+                #for _, param in self.clm_head.named_parameters():
+                #        param.requires_grad = False
+                #for _, param in self.inversion_head.named_parameters():
+                #        param.requires_grad = False
+
 
         def forward(self, input_ids, labels=None, attention_mask=None):
                 if self.random_input:
@@ -320,29 +325,28 @@ class SecretTransformer(nn.Module):
                 if isinstance(self.inversion_decoder, AbbreviatedModel):
                     inverted_x = self.inversion_decoder(x)
                 else:
-                    inverted_x = self.inversion_decoder(inputs_embeds=x)
+                    inverted_x = self.inversion_decoder(inputs_embeds=x).last_hidden_state
 
                 if isinstance(self.inversion_decoder, AbbreviatedModel):
                     clm_x = self.clm_decoder(x)
                 else:
-                    clm_x = self.clm_decoder(inputs_embeds=x)
+                    clm_x = self.clm_decoder(inputs_embeds=x).last_hidden_state
 
                 clm_output = self.clm_head(clm_x)
                 inverted_output = self.inversion_head(inverted_x)
-                print (clm_x, inverted_x)
                 clm_output = rearrange(clm_output, 'b t e -> b e t')
                 inverted_output = rearrange(inverted_output, 'b t e -> b e t')
                 if labels is not None:
-                        shifted_clm_output = clm_output[:, :, :-1]
-                        shifted_labels = labels[:, 1:]
-                        loss = self.cel(shifted_clm_output, shifted_labels) # starts at 0
-                        print (f'Cel loss: {loss}')
-                        inversion_loss = 9 - self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
+                        shifted_clm_output = clm_output[..., :-1].contiguous()
+                        shifted_labels = labels[:, 1:].contiguous()
+                        #loss = self.cel(shifted_clm_output, shifted_labels) # starts at 0
+                        #print (f'Cel loss: {loss}')
+                        inversion_loss = -self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
                         print (f'Inversion loss: {inversion_loss}')
-                        loss += inversion_loss 
+                        loss = inversion_loss 
                 else:
                         loss = 0
-                return loss, output
+                return loss, inverted_output
 
 
 def count_parameters(model):

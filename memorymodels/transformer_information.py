@@ -97,6 +97,7 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
+print (clm_head)
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
@@ -148,7 +149,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path)
+train_dataset = load_from_disk(train_path).take(100)
 test_dataset = load_from_disk(test_path)
 
 global_batch_size = 128

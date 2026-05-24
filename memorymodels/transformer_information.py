@@ -93,7 +93,7 @@ encoder_model = LlamaForCausalLM(configuration)
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
 encoder_model = encoder_model.model
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=256, freeze_encoder=True, noise_embeddings=False)
+model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=512, freeze_encoder=True, noise_embeddings=False)
 
 ## unrolled embedding transformer autoencoder
 #encoder_model = LlamaModel(configuration).model
@@ -118,7 +118,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_allembed_information_c256\
+output_dir = f'{checkpoint_root}/fineweb_allembed_information_c512\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\

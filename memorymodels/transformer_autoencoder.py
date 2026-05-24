@@ -294,7 +294,7 @@ class SecretTransformer(nn.Module):
                 self.inversion_head=inversion_head
                 self.clm_model = clm_model
 
-                for _, param in self.clm_modl.named_parameters():
+                for _, param in self.clm_model.named_parameters():
                         param.requires_grad = False
 
                 #for _, param in self.clm_head.named_parameters():
@@ -309,6 +309,9 @@ class SecretTransformer(nn.Module):
                 else:
                         x = input_ids
                 x = x.to(device).squeeze(1)
+
+                original_clm_output = self.clm_model(x).logits
+                
                 if isinstance(self.encoder, AbbreviatedModel):
                     x = self.wte(x)
                     x = self.encoder(x)
@@ -341,7 +344,6 @@ class SecretTransformer(nn.Module):
                 clm_output = rearrange(clm_output, 'b t e -> b e t')
                 inverted_output = rearrange(inverted_output, 'b t e -> b e t')
 
-                original_clm_output = self.clm_model(x).logits
 
                 if labels is not None:
                         loss = self.cel(clm_output, original_clm_output) # starts at 0

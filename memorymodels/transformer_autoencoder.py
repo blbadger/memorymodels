@@ -333,7 +333,10 @@ class SecretTransformer(nn.Module):
                         shifted_clm_output = clm_output[:, :, :-1]
                         shifted_labels = labels[:, 1:]
                         loss = self.cel(shifted_clm_output, shifted_labels) # starts at 0
-                        loss += 9 - self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
+                        print (f'Cel loss: {loss}')
+                        inversion_loss = 9 - self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
+                        print (f'Inversion loss: {inversion_loss}')
+                        loss += inversion_loss 
                 else:
                         loss = 0
                 return loss, output

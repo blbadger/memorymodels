@@ -96,7 +96,7 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 #model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=512, freeze_encoder=True, noise_embeddings=False)
 
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
-
+clm_head = encoder_model.lm_head
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
@@ -131,12 +131,15 @@ load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32
 
 encoder = model.encoder
 inversion_decoder = model.decoder
+inversion_head = model.lm_head
 secret_model = SecretTransformer(
 	vocab_size,
 	decoder_dim,
 	encoder,
 	clm_decoder,
-	inversion_decoder
+	inversion_decoder,
+	clm_head,
+	inversion_head
 ) 
 	
 
@@ -180,11 +183,11 @@ training_arguments = transformers.TrainingArguments(
 	overwrite_output_dir=True,
 	max_steps=200000,
 	save_safetensors=True,
-        torch_compile=True
+#        torch_compile=True
 )
 
 trainer = transformers.Trainer(
-	model=model,
+	model=secret_model,
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments,

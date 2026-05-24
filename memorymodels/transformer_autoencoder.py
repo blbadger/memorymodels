@@ -261,7 +261,7 @@ class AllAutoencodingTransformer(nn.Module):
 
 class SecretTransformer(nn.Module):
        
-        def __init__(self, n_vocab, dim, encoder_model, clm_decoder, inversion_decoder, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_decoders=True, noise_embeddings=False):
+        def __init__(self, n_vocab, dim, encoder_model, clm_decoder, inversion_decoder, clm_head, inversion_head, decoder_dim=None, tokenized_length=512, compression=1, random=False, freeze_decoders=True, noise_embeddings=False):
                 super().__init__()
                 self.wte = nn.Embedding(n_vocab, dim)
                 self.encoder = encoder_model
@@ -291,6 +291,8 @@ class SecretTransformer(nn.Module):
                 self.random_input = random
                 self.n_vocab = n_vocab
                 self.noise_embeddings=noise_embeddings
+                self.clm_head = clm_head,
+                self.inversion_head=inversion_head
 
         def forward(self, input_ids, labels=None, attention_mask=None):
                 if self.random_input:
@@ -315,19 +317,20 @@ class SecretTransformer(nn.Module):
 
                 # expects lm_head to be pretrained for both inversion and clm models
                 x = encoder_embedding
-                if isinstance(self.intersion_decoder, AbbreviatedModel):
+                if isinstance(self.inversion_decoder, AbbreviatedModel):
                     inverted_x = self.inversion_decoder(x)
                 else:
                     inverted_x = self.inversion_decoder(inputs_embeds=x)
 
-                if isinstance(self.intersion_decoder, AbbreviatedModel):
+                if isinstance(self.inversion_decoder, AbbreviatedModel):
                     clm_x = self.clm_decoder(x)
                 else:
                     clm_x = self.clm_decoder(inputs_embeds=x)
 
-                clm_output = self.clm_lm_head(clm_x)
-                inverted_output = self.inversion_lm_head(inverted_x)
-                clm_output = rearrange(clm_output, 'b t e -> b e t')
+                clm_output = self.clm_head(clm_x)
+                inverted_output = self.inversion_head(inverted_x)
+                print (clm_x, inverted_x)
+		clm_output = rearrange(clm_output, 'b t e -> b e t')
                 inverted_output = rearrange(inverted_output, 'b t e -> b e t')
                 if labels is not None:
                         shifted_clm_output = clm_output[:, :, :-1]

@@ -70,7 +70,7 @@ class AbbreviatedModel(nn.Module):
         def __init__(self, model, depth=8, tokenized_length=512):
                 super().__init__()
                 if isinstance(model, LlamaForCausalLM):
-                	self.model = model.model
+                        self.model = model.model
                 elif isinstance(model, LlamaModel):
                         self.model = model
                 elif isinstance(model, AbbreviatedModel):
@@ -330,7 +330,7 @@ class SecretTransformer(nn.Module):
                 clm_output = self.clm_head(clm_x)
                 inverted_output = self.inversion_head(inverted_x)
                 print (clm_x, inverted_x)
-		clm_output = rearrange(clm_output, 'b t e -> b e t')
+                clm_output = rearrange(clm_output, 'b t e -> b e t')
                 inverted_output = rearrange(inverted_output, 'b t e -> b e t')
                 if labels is not None:
                         shifted_clm_output = clm_output[:, :, :-1]
@@ -445,8 +445,8 @@ if __name__ == '__main__':
                 warmup_steps=500,
                 eval_steps=4000,
                 save_steps=4000,
-		logging_strategy='steps',
-		logging_steps=50,
+                logging_strategy='steps',
+                logging_steps=50,
                 learning_rate=1e-4,
                 fp16=True,
                 evaluation_strategy='steps',

@@ -143,7 +143,7 @@ model = SecretTransformer(
  	clm_decoder,
  	clm_model,
  	inversion_decoder,
-        model.wte,
+        encoder_model.wte,
  	clm_head,
  	inversion_head
 ) 

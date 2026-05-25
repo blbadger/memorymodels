@@ -22,7 +22,8 @@ from pathlib import Path
 from peft import LoraConfig, TaskType, get_peft_model
 
 from mixer_autoencoder import AutoencodingMixer, TruncatedModel
-from transformer_autoencoder import AbbreviatedModel, SuffixModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer, AllAutoencodingTransformer, SecretTransformer
+from transformer_autoencoder import AbbreviatedModel, SuffixModel, AutoencodingTransformer, AutoencodingTransformerMod, UnrolledAutoencodingTransformer
+from transformer_autoencoder import SplitModel, AllAutoencodingTransformer, SecretTransformer
 from memory_transformer import VariableMemoryTransformer, MemoryTransformer, RecurrentMemoryTransformer, ProjMemoryTransformer
 
 warnings.filterwarnings(action='ignore')
@@ -95,12 +96,13 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=512, freeze_encoder=True, noise_embeddings=False)
 
-
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
-clm_model = encoder_model
+
+split_model = SplitModel(encoder_configuration)
+load_model(split_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 encoder_model = encoder_model.model
-print (clm_model)
+
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
@@ -144,11 +146,11 @@ model = SecretTransformer(
 	decoder_dim,
  	encoder,
  	clm_decoder,
- 	clm_model,
+ 	split_model,
  	inversion_decoder,
-        encoder.embed_tokens,
- 	clm_head,
- 	inversion_head
+ 	wte=split_model.embed_tokens,
+ 	clm_head=clm_head,
+ 	inversion_head=inversion_head
 ) 
 	
 

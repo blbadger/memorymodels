@@ -126,7 +126,7 @@ decoder_config_kwargs = {
 }
 
 decoder_configuration = LlamaConfig(**decoder_config_kwargs)
-decoder_model = SuffixModel(decoder_configuration)
+decoder_model = LlamModel(decoder_configuration)
 
 model = AllAutoencodingTransformer(
 	vocab_size, 
@@ -140,21 +140,20 @@ model = AllAutoencodingTransformer(
 )
 
 #load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
-#
 #encoder = model.encoder
-inversion_decoder = model.decoder
-inversion_head = model.lm_head
-model = SecretTransformer(
-	vocab_size,
-	decoder_dim,
- 	encoder,
- 	clm_decoder,
- 	split_model,
- 	inversion_decoder,
- 	wte=split_model.embed_tokens,
- 	clm_head=clm_head,
- 	inversion_head=inversion_head
-) 
+# inversion_decoder = model.decoder
+# inversion_head = model.lm_head
+# model = SecretTransformer(
+# 	vocab_size,
+# 	decoder_dim,
+#  	encoder,
+#  	clm_decoder,
+#  	split_model,
+#  	inversion_decoder,
+#  	wte=split_model.embed_tokens,
+#  	clm_head=clm_head,
+#  	inversion_head=inversion_head
+# ) 
 	
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"

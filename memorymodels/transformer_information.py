@@ -99,12 +99,15 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
 clm_model = encoder_model
+encoder_model = encoder_model.model
 print (clm_model)
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
 # first eight are the encoder
-encoder_model = AbbreviatedModel(encoder_model.model, depth=8, tokenized_length=512)
+#encoder_model = AbbreviatedModel(encoder_model.model, depth=8, tokenized_length=512)
+encoder_model.config.num_hidden_layers = 8
+print (encoder_model.config)
 
 n_layers = 8
 n_heads = 4
@@ -131,7 +134,7 @@ model = AllAutoencodingTransformer(
 	noise_embeddings=False, 
 )
 
-load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-4000/model.safetensors')
+load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
 
 encoder = model.encoder
 inversion_decoder = model.decoder
@@ -143,7 +146,7 @@ model = SecretTransformer(
  	clm_decoder,
  	clm_model,
  	inversion_decoder,
-        None,
+        encoder.embed_tokens,
  	clm_head,
  	inversion_head
 ) 

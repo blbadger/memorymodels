@@ -284,6 +284,7 @@ class SecretTransformer(nn.Module):
                                 param.requires_grad = False
 
                 self.cel = nn.CrossEntropyLoss()
+                self.mse = nn.MSELoss()
                 self.tokenized_length = tokenized_length
                 self.dim = dim
                 if decoder_dim and decoder_dim != dim:

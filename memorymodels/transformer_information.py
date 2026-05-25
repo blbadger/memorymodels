@@ -131,21 +131,22 @@ model = AllAutoencodingTransformer(
 	noise_embeddings=False, 
 )
 
-# load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
+load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-4000/model.safetensors')
 
-# encoder = model.encoder
-# inversion_decoder = model.decoder
-# inversion_head = model.lm_head
-# secret_model = SecretTransformer(
-# 	vocab_size,
-# 	decoder_dim,
-# 	encoder,
-# 	clm_decoder,
-# 	clm_model,
-# 	inversion_decoder,
-# 	clm_head,
-# 	inversion_head
-# ) 
+encoder = model.encoder
+inversion_decoder = model.decoder
+inversion_head = model.lm_head
+model = SecretTransformer(
+	vocab_size,
+	decoder_dim,
+ 	encoder,
+ 	clm_decoder,
+ 	clm_model,
+ 	inversion_decoder,
+        model.wte,
+ 	clm_head,
+ 	inversion_head
+) 
 	
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
@@ -165,7 +166,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_halfn16_transformer\
+output_dir = f'{checkpoint_root}/fineweb_secret_transformer\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\
@@ -179,7 +180,7 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	logging_steps=500,
-	save_steps=10000,
+	save_steps=4000,
 	learning_rate=2e-4,
 	fp16=True,
 	eval_strategy='steps',
@@ -192,7 +193,7 @@ training_arguments = transformers.TrainingArguments(
 )
 
 trainer = transformers.Trainer(
-	model=secret_model,
+	model=model,
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments,

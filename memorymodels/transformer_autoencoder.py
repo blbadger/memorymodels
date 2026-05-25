@@ -4,6 +4,7 @@ import torch
 from einops import rearrange
 import transformers
 from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalLM
+from transformers.masking_utils import create_causal_mask
 import torch.nn as nn
 import mlflow
 from datasets import load_dataset
@@ -92,7 +93,7 @@ class AbbreviatedModel(nn.Module):
 
 class SuffixModel(nn.Module):
 
-        def __init__(self, model, depth=16, first_layer=8, tokenized_length=512):
+        def __init__(self, model, depth=16, first_layer=8, tokenized_length=512, causal=True):
                 super().__init__()
                 if isinstance(model, LlamaForCausalLM):
                         self.model = model.model
@@ -112,8 +113,17 @@ class SuffixModel(nn.Module):
                 x = input_ids.to(device)
                 position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
                 position_embeddings = self.model.rotary_emb(x, position_ids)
+                if self.causal_mask:
+                        causal_mask = create_causal_mask(
+                        config=self.model.config,
+                        inputs_embeds=x,
+                        attention_mask=None,
+                        past_key_values=None,
+                        position_ids=position_ids,
+                )
                 for i in range(self.first_layer, self.depth):
-                        x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                        x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings, attention_mask=causal_mask)[0]
+                x = self.model.norm(x)
                 return x
 
 class UnrolledAutoencodingTransformer(nn.Module):

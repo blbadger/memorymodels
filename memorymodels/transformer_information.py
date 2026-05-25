@@ -95,6 +95,7 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 #decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
 #model = AllAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=512, freeze_encoder=True, noise_embeddings=False)
 
+
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
 clm_model = encoder_model
@@ -102,9 +103,8 @@ print (clm_model)
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
 
-encoder_model = encoder_model.model
-# take half of the layers
-encoder_model.config.num_hidden_layers = 8 
+# first eight are the encoder
+encoder_model = AbbreviatedModel(encoder_model.model, depth=8, tokenized_length=512)
 
 n_layers = 8
 n_heads = 4
@@ -120,30 +120,32 @@ decoder_config_kwargs = {
 decoder_configuration = LlamaConfig(**decoder_config_kwargs)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(decoder_configuration), tokenized_length=context_length)
 
-model = AllAutoencodingTransformer(vocab_size, 
+model = AllAutoencodingTransformer(
+	vocab_size, 
 	decoder_dim, 
 	encoder_model, 
 	decoder_model, 
 	tokenized_length=context_length, 
 	compression=1, 
-	freeze_encoder=True, 
+	freeze_encoder=True,
 	noise_embeddings=False, 
 )
-load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
 
-encoder = model.encoder
-inversion_decoder = model.decoder
-inversion_head = model.lm_head
-secret_model = SecretTransformer(
-	vocab_size,
-	decoder_dim,
-	encoder,
-	clm_decoder,
-	clm_model,
-	inversion_decoder,
-	clm_head,
-	inversion_head
-) 
+# load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
+
+# encoder = model.encoder
+# inversion_decoder = model.decoder
+# inversion_head = model.lm_head
+# secret_model = SecretTransformer(
+# 	vocab_size,
+# 	decoder_dim,
+# 	encoder,
+# 	clm_decoder,
+# 	clm_model,
+# 	inversion_decoder,
+# 	clm_head,
+# 	inversion_head
+# ) 
 	
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
@@ -151,7 +153,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path).take(100)
+train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
 global_batch_size = 128
@@ -163,7 +165,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_secret_transformer\
+output_dir = f'{checkpoint_root}/fineweb_halfn16_transformer\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\

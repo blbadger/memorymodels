@@ -143,7 +143,7 @@ model = SecretTransformer(
  	clm_decoder,
  	clm_model,
  	inversion_decoder,
-        encoder_model.wte,
+        None,
  	clm_head,
  	inversion_head
 ) 
@@ -186,9 +186,7 @@ training_arguments = transformers.TrainingArguments(
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
-	overwrite_output_dir=True,
 	max_steps=200000,
-	save_safetensors=True,
 #        torch_compile=True
 )
 

@@ -4,6 +4,7 @@ import torch
 from einops import rearrange
 import transformers
 from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalLM
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.masking_utils import create_causal_mask
 import torch.nn as nn
 import mlflow
@@ -91,10 +92,10 @@ class AbbreviatedModel(nn.Module):
             x = self.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
         return x
 
-class SuffixModel(nn.Module, LLamaModel):
+class SuffixModel(LlamaModel):
 
-    def __init__(self, start_layer=8):
-        super().__init__()
+    def __init__(self, config, start_layer=8):
+        super().__init__(config)
         self.start_layer = 8
 
     def forward(
@@ -102,10 +103,9 @@ class SuffixModel(nn.Module, LLamaModel):
         input_ids: torch.LongTensor | None = None,
         attention_mask: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
-        past_key_values: Cache | None = None,
         inputs_embeds: torch.FloatTensor | None = None,
         use_cache: bool | None = None,
-        **kwargs: Unpack[TransformersKwargs],
+        **kwargs,
         ) -> BaseModelOutputWithPast:
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -113,11 +113,8 @@ class SuffixModel(nn.Module, LLamaModel):
         if inputs_embeds is None:
             inputs_embeds: torch.Tensor = self.embed_tokens(input_ids)
 
-        if use_cache and past_key_values is None:
-            past_key_values = DynamicCache(config=self.config)
-
         if position_ids is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            past_seen_tokens = 0
             position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device) + past_seen_tokens
             position_ids = position_ids.unsqueeze(0)
 
@@ -125,7 +122,7 @@ class SuffixModel(nn.Module, LLamaModel):
             config=self.config,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            past_key_values=past_key_values,
+            past_key_values=None,
             position_ids=position_ids,
         )
 
@@ -138,7 +135,6 @@ class SuffixModel(nn.Module, LLamaModel):
                 attention_mask=causal_mask,
                 position_embeddings=position_embeddings,
                 position_ids=position_ids,
-                past_key_values=past_key_values,
                 use_cache=use_cache,
                 **kwargs,
                 )
@@ -149,10 +145,10 @@ class SuffixModel(nn.Module, LLamaModel):
             past_key_values=past_key_values,
         )
 
-class SplitModel(nn.Module, LLamaModel):
+class SplitModel(LlamaModel):
 
-    def __init__(self, split_layer=8):
-        super().__init__()
+    def __init__(self, config, split_layer=8):
+        super().__init__(config)
         self.split_layer = 8
 
     def forward(
@@ -160,10 +156,9 @@ class SplitModel(nn.Module, LLamaModel):
         input_ids: torch.LongTensor | None = None,
         attention_mask: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
-        past_key_values: Cache | None = None,
         inputs_embeds: torch.FloatTensor | None = None,
         use_cache: bool | None = None,
-        **kwargs: Unpack[TransformersKwargs],
+        **kwargs,
         ) -> BaseModelOutputWithPast:
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -171,11 +166,8 @@ class SplitModel(nn.Module, LLamaModel):
         if inputs_embeds is None:
             inputs_embeds: torch.Tensor = self.embed_tokens(input_ids)
 
-        if use_cache and past_key_values is None:
-            past_key_values = DynamicCache(config=self.config)
-
         if position_ids is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            past_seen_tokens = 0
             position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device) + past_seen_tokens
             position_ids = position_ids.unsqueeze(0)
 
@@ -183,7 +175,7 @@ class SplitModel(nn.Module, LLamaModel):
             config=self.config,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            past_key_values=past_key_values,
+            past_key_values=None,
             position_ids=position_ids,
         )
 
@@ -191,6 +183,7 @@ class SplitModel(nn.Module, LLamaModel):
         position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
 
         for layer, decoder_layer in enumerate(self.layers[:self.config.num_hidden_layers]):
+            print (layer)
             if layer == self.split_layer:
                 split_hidden_states = hidden_states
 
@@ -199,7 +192,6 @@ class SplitModel(nn.Module, LLamaModel):
                 attention_mask=causal_mask,
                 position_embeddings=position_embeddings,
                 position_ids=position_ids,
-                past_key_values=past_key_values,
                 use_cache=use_cache,
                 **kwargs,
                 )
@@ -402,8 +394,6 @@ class SecretTransformer(nn.Module):
         self.inversion_head=inversion_head
         self.split_model = split_model
         self.clm_head = clm_head
-        for _, param in self.clm_model.named_parameters():
-            param.requires_grad = False
 
     def forward(self, input_ids, labels=None, attention_mask=None):
         if self.random_input:
@@ -411,18 +401,11 @@ class SecretTransformer(nn.Module):
         else:
             x = input_ids
         x = x.to(device).squeeze(1)
-        split_hidden_states, output_hidden_states = self.split_model(inputs_embeds=x)
+        split_hidden_states, output_hidden_states = self.split_model(input_ids=x)
         original_logits = self.clm_head(output_hidden_states)
         original_clm_tokens = torch.argmax(original_logits, dim=-1)
 
-        if isinstance(self.encoder, AbbreviatedModel):
-            x = self.wte(x)
-            x = self.encoder(x)
-        else:
-            x = self.encoder(x).last_hidden_state
-
-        encoder_embedding = x # dim=[batch, token, hidden]
-        assert x == split_hidden_states  # encoder was frozen during inversion training
+        encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
 
         if self.compression:
             encoder_embedding = self.down(encoder_embedding)

@@ -98,18 +98,21 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
+encoder_state_dict = encoder_model.model.state_dict()
 
 split_model = SplitModel(encoder_configuration)
-load_model(split_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
+split_model.config.num_hidden_layers = 16
+split_model.load_state_dict(encoder_state_dict)
 encoder_model = encoder_model.model
 
 # last 8 layers are the clm decoder
-clm_decoder = SuffixModel(encoder_model, depth=16, first_layer=8, tokenized_length=512)
+clm_decoder = SuffixModel(encoder_configuration)
+clm_decoder.load_state_dict(encoder_state_dict)
 
 # first eight are the encoder
 #encoder_model = AbbreviatedModel(encoder_model.model, depth=8, tokenized_length=512)
-encoder_model.config.num_hidden_layers = 8
-print (encoder_model.config)
+#encoder_model.config.num_hidden_layers = 8
+#print (encoder_model.config)
 
 n_layers = 8
 n_heads = 4
@@ -123,7 +126,7 @@ decoder_config_kwargs = {
 }
 
 decoder_configuration = LlamaConfig(**decoder_config_kwargs)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(decoder_configuration), tokenized_length=context_length)
+decoder_model = SuffixModel(decoder_configuration)
 
 model = AllAutoencodingTransformer(
 	vocab_size, 
@@ -136,9 +139,9 @@ model = AllAutoencodingTransformer(
 	noise_embeddings=False, 
 )
 
-load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
-
-encoder = model.encoder
+#load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
+#
+#encoder = model.encoder
 inversion_decoder = model.decoder
 inversion_head = model.lm_head
 model = SecretTransformer(

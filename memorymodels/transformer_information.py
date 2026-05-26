@@ -99,7 +99,7 @@ encoder_model = LlamaForCausalLM(encoder_configuration)
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
 clm_head = encoder_model.lm_head
 encoder_state_dict = encoder_model.model.state_dict()
-
+clm_wte = encoder_model.model.embed_tokens
 split_model = SplitModel(encoder_configuration)
 split_model.config.num_hidden_layers = 16
 split_model.load_state_dict(encoder_state_dict)
@@ -109,6 +109,7 @@ encoder_model = encoder_model.model
 clm_decoder = SuffixModel(encoder_configuration)
 clm_decoder.load_state_dict(encoder_state_dict)
 
+encoder_model.config.num_hidden_layers = 8
 # first eight are the encoder
 #encoder_model = AbbreviatedModel(encoder_model.model, depth=8, tokenized_length=512)
 #encoder_model.config.num_hidden_layers = 8
@@ -126,7 +127,7 @@ decoder_config_kwargs = {
 }
 
 decoder_configuration = LlamaConfig(**decoder_config_kwargs)
-decoder_model = LlamModel(decoder_configuration)
+decoder_model = LlamaModel(decoder_configuration)
 
 model = AllAutoencodingTransformer(
 	vocab_size, 
@@ -139,21 +140,22 @@ model = AllAutoencodingTransformer(
 	noise_embeddings=False, 
 )
 
-#load_model(model, f'{data_root}/fineweb_halfn16_transformer_512_d512_n8_c512_b32x4/checkpoint-200001/model.safetensors')
-#encoder = model.encoder
-# inversion_decoder = model.decoder
-# inversion_head = model.lm_head
-# model = SecretTransformer(
-# 	vocab_size,
-# 	decoder_dim,
-#  	encoder,
-#  	clm_decoder,
-#  	split_model,
-#  	inversion_decoder,
-#  	wte=split_model.embed_tokens,
-#  	clm_head=clm_head,
-#  	inversion_head=inversion_head
-# ) 
+load_model(model, f'{data_root}/fineweb_embedding_inverter_512_d512_n8_c512_b32x4/checkpoint-4000/model.safetensors')
+inversion_encoder = model.encoder
+inversion_decoder = model.decoder
+inversion_wte = model.wte
+inversion_head = model.lm_head
+model = SecretTransformer(
+ 	vocab_size,
+ 	decoder_dim,
+  	inversion_encoder,
+  	clm_wte,
+  	split_model,
+  	inversion_decoder,
+  	wte=inversion_wte,
+  	clm_head=clm_head,
+  	inversion_head=inversion_head
+) 
 	
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
@@ -164,7 +166,7 @@ datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-global_batch_size = 128
+global_batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -173,7 +175,7 @@ batch_size = global_batch_size // n_devices
 
 encoder_dim = 512
 # descriptive name for output
-output_dir = f'{checkpoint_root}/fineweb_secret_transformer\
+output_dir = f'{checkpoint_root}/fineweb_embedding_inverter\
 _{encoder_dim}\
 _d{decoder_dim}\
 _n{n_layers}\

@@ -98,6 +98,7 @@ class SuffixModel(LlamaModel):
         super().__init__(config)
         self.start_layer = 8
 
+    @torch.no_grad()
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,
@@ -129,7 +130,7 @@ class SuffixModel(LlamaModel):
         hidden_states = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
 
-        for layer, decoder_layer in enumerate(self.layers[start_layer:self.config.num_hidden_layers]):
+        for layer, decoder_layer in enumerate(self.layers[self.start_layer:self.config.num_hidden_layers]):
             hidden_states = decoder_layer(
                 hidden_states,
                 attention_mask=causal_mask,
@@ -142,14 +143,14 @@ class SuffixModel(LlamaModel):
         hidden_states = self.norm(hidden_states)
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
-            past_key_values=past_key_values,
         )
 
 class SplitModel(LlamaModel):
 
-    def __init__(self, config, split_layer=8):
+    def __init__(self, config, split_layer=8, num_hidden_layers=16):
         super().__init__(config)
         self.split_layer = 8
+        self.num_hidden_layers = num_hidden_layers
 
     def forward(
         self,
@@ -182,8 +183,8 @@ class SplitModel(LlamaModel):
         hidden_states = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
 
-        for layer, decoder_layer in enumerate(self.layers[:self.config.num_hidden_layers]):
-            print (layer)
+        self.config.num_hidden_layers = 16
+        for layer, decoder_layer in enumerate(self.layers[:self.num_hidden_layers]):
             if layer == self.split_layer:
                 split_hidden_states = hidden_states
 
@@ -284,7 +285,7 @@ class AllAutoencodingTransformer(nn.Module):
         self.encoder = encoder_model
         if freeze_encoder:
             for name, param in self.encoder.named_parameters():
-                param.requires_grad = False; print (name)
+                param.requires_grad = False
 
         self.decoder = decoder_model
         self.cel = nn.CrossEntropyLoss()
@@ -400,7 +401,8 @@ class SecretTransformer(nn.Module):
             x = torch.randint(1, self.n_vocab, input_ids.shape)
         else:
             x = input_ids
-        x = x.to(device).squeeze(1)
+
+        x = input_ids.to(device).squeeze(1)
         split_hidden_states, output_hidden_states = self.split_model(input_ids=x)
         original_logits = self.clm_head(output_hidden_states)
         original_clm_tokens = torch.argmax(original_logits, dim=-1)
@@ -411,15 +413,15 @@ class SecretTransformer(nn.Module):
             encoder_embedding = self.down(encoder_embedding)
             encoder_embedding = self.up(encoder_embedding)
 
+        x = encoder_embedding
         if self.noise_embeddings:
             x += torch.randn(x.shape).to(x.device).to(x.dtype)
 
-        x = encoder_embedding
         if isinstance(self.inversion_decoder, AbbreviatedModel):
             inverted_x = self.inversion_decoder(x)
         else:
             inverted_x = self.inversion_decoder(inputs_embeds=x).last_hidden_state
-
+        
         if isinstance(self.clm_decoder, AbbreviatedModel):
             clm_x = self.clm_decoder(x)
         else:
@@ -431,11 +433,11 @@ class SecretTransformer(nn.Module):
         inverted_output = rearrange(inverted_output, 'b t e -> b e t')
 
         if labels is not None:
-            loss = self.cel(clm_output, original_clm_tokens) # starts at 0
+            loss = self.cel(clm_output, original_clm_tokens) # starts near 0
             print (f'Cel loss: {loss}')
-            inversion_loss = -self.cel(inverted_output, labels) # cel starts at 0, we want maximum div
+            inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
             print (f'Inversion loss: {inversion_loss}')
-            loss = inversion_loss 
+            loss = loss  + inversion_loss
         else:
             loss = 0
         return loss, inverted_output
@@ -536,8 +538,8 @@ if __name__ == '__main__':
 
     training_arguments = transformers.TrainingArguments(
         num_train_epochs=7,
-        per_device_train_batch_size=32,
-        per_device_eval_batch_size=32,
+        per_device_train_batch_size=2,
+        per_device_eval_batch_size=2,
         warmup_steps=500,
         eval_steps=4000,
         save_steps=4000,
@@ -549,7 +551,8 @@ if __name__ == '__main__':
         output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
         optim='adamw_torch',
         overwrite_output_dir=True,
-        save_safetensors=True
+        save_safetensors=True,
+        torch_compile=True
     )
 
     trainer = transformers.Trainer(

@@ -140,6 +140,7 @@ model = AllAutoencodingTransformer(
 	noise_embeddings=False, 
 )
 
+
 load_model(model, f'{data_root}/fineweb_embedding_inverter_512_d512_n8_c512_b32x4/checkpoint-4000/model.safetensors')
 inversion_encoder = model.encoder
 inversion_decoder = model.decoder
@@ -149,7 +150,7 @@ model = SecretTransformer(
  	vocab_size,
  	decoder_dim,
   	inversion_encoder,
-  	clm_wte,
+  	clm_decoder,
   	split_model,
   	inversion_decoder,
   	wte=inversion_wte,

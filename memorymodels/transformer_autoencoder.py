@@ -395,6 +395,9 @@ class SecretTransformer(nn.Module):
         self.inversion_head=inversion_head
         self.split_model = split_model
         self.clm_head = clm_head
+        self.original_embedding = None
+        self.random_label = None
+
 
     def forward(self, input_ids, labels=None, attention_mask=None):
         if self.random_input:
@@ -407,6 +410,8 @@ class SecretTransformer(nn.Module):
         original_logits = self.clm_head(output_hidden_states)
         original_clm_tokens = torch.argmax(original_logits, dim=-1)
 
+        if self.original_embedding is None:
+            self.original_embedding = split_hidden_states.detach()
         encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
 
         if self.compression:
@@ -434,10 +439,15 @@ class SecretTransformer(nn.Module):
 
         if labels is not None:
             loss = self.cel(clm_output, original_clm_tokens) # starts near 0
-            print (f'Cel loss: {loss}')
-            inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
-            print (f'Inversion loss: {inversion_loss}')
-            loss = loss  + inversion_loss
+            #print (f'Cel loss: {loss}')
+            if self.random_label is None:
+                self.random_label = torch.randint_like(labels, low=0, high=1).to(labels.device).to(labels.dtype)
+            inversion_loss = self.cel(inverted_output, self.random_label)#-self.cel(inverted_output, labels) # cel near 0, we want maximum div
+            #inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
+            #print (f'Inversion loss: {inversion_loss}')
+            embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)
+            #print (f'Embedding loss: {embedding_mse_loss}')
+            loss = inversion_loss + loss
         else:
             loss = 0
         return loss, inverted_output

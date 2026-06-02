@@ -188,7 +188,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
-	eval_steps=100,
+	eval_steps=500,
 	logging_steps=500,
 	save_steps=4000,
 	learning_rate=2e-4,
@@ -218,6 +218,6 @@ shutil.copy(code_path, output_dir)
 
 print (f"training begun: saving results in {output_dir}")
 model.train()
-trainer.evaluate()
+print (trainer.evaluate())
 trainer.train()
 print (trainer.evaluate())

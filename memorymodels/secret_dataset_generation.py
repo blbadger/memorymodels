@@ -186,7 +186,7 @@ for i in tqdm(range(num_models)):
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
 		warmup_steps=50,
-		eval_steps=500,
+		eval_steps=900,
 		logging_steps=500,
 		learning_rate=2e-4,
 		fp16=True,
@@ -208,20 +208,20 @@ for i in tqdm(range(num_models)):
 		preprocess_logits_for_metrics=preprocess_logits_for_metrics
 	)
 	model.train()
-	trainer.train()       
+	trainer.train()    
+	print ('training run completed')   
 	all_embeddings = model.all_embeddings
 	all_labels = model.all_labels  
+	all_embeddings = torch.cat(all_embeddings, dim=0) # (b*n) t e
+	all_embeddings = list(torch.unbind(all_embeddings, dim=0))
+	all_labels = torch.cat(all_labels, dim=0)
+	all_labels = list(torch.unbind(all_labels, dim=0))
+	print ('embeddings and labels accessed')
 	attributions_dict = {'encodings': all_embeddings, 'ids': all_labels}
 	# print (attributions_dict)
 	attributions_dataset = Dataset.from_dict(attributions_dict)
 	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}")
 	model.all_embeddings, model.all_labels = [], []
+	print ('dataset updates')
 
-	# save driver code snapshot in checkpoint dir
-	code_path = os.path.abspath(__file__)
-	if not os.path.isdir(output_dir):
-		os.mkdir(output_dir)
-	shutil.copy(code_path, output_dir)
-
-	print (f"training begun: saving results in {output_dir}")
 

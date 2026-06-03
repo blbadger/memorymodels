@@ -14,6 +14,7 @@ from safetensors.torch import save_file, load_model
 from safetensors import safe_open
 import safetensors
 import datasets
+from datasets import Dataset
 import warnings
 import shutil
 from dotenv import load_dotenv
@@ -167,9 +168,6 @@ _c{context_length}_b{batch_size}x{n_devices}'
 
 num_models = 1000
 
-global all_embeddings, all_labels
-all_embeddings, all_labels = [], []
-
 for i in tqdm(range(num_models)):
 	model = SecretTransformer(
 		vocab_size,
@@ -197,7 +195,7 @@ for i in tqdm(range(num_models)):
 		optim='adamw_torch',
 		max_steps=500,
 		torch_compile=False,
-		report_to=None
+		report_to='none'
 	)
 
 	trainer = transformers.Trainer(
@@ -209,12 +207,15 @@ for i in tqdm(range(num_models)):
 		compute_metrics = compute_hamming_metric,
 		preprocess_logits_for_metrics=preprocess_logits_for_metrics
 	)
-
+	model.train()
+	trainer.train()       
+	all_embeddings = model.all_embeddings
+	all_labels = model.all_labels  
 	attributions_dict = {'encodings': all_embeddings, 'ids': all_labels}
 	# print (attributions_dict)
 	attributions_dataset = Dataset.from_dict(attributions_dict)
 	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}")
-	all_embeddings, all_labels = []
+	model.all_embeddings, model.all_labels = [], []
 
 	# save driver code snapshot in checkpoint dir
 	code_path = os.path.abspath(__file__)
@@ -223,5 +224,4 @@ for i in tqdm(range(num_models)):
 	shutil.copy(code_path, output_dir)
 
 	print (f"training begun: saving results in {output_dir}")
-	model.train()
 

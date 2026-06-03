@@ -184,7 +184,7 @@ for i in range(num_models):
 		num_train_epochs=3,
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
-		warmup_steps=500,
+		warmup_steps=50,
 		eval_steps=500,
 		logging_steps=500,
 		learning_rate=2e-4,

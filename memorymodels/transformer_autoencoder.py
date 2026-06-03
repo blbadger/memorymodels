@@ -450,7 +450,7 @@ class SecretTransformer(nn.Module):
             #print (f'Inversion loss: {inversion_loss}')
             embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)
             #print (f'Embedding loss: {embedding_mse_loss}')
-            loss = inversion_loss + 10* embedding_mse_loss
+            loss = inversion_loss + loss
         else:
             loss = 0
         return loss, inverted_output

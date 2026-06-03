@@ -186,7 +186,7 @@ for i in tqdm(range(num_models)):
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
 		warmup_steps=50,
-		eval_steps=900,
+		eval_steps=1000,
 		logging_steps=500,
 		learning_rate=2e-4,
 		fp16=True,
@@ -194,6 +194,7 @@ for i in tqdm(range(num_models)):
 		output_dir=output_dir,
 		optim='adamw_torch',
 		max_steps=500,
+		save_steps=1000,
 		torch_compile=False,
 		report_to='none'
 	)
@@ -207,9 +208,11 @@ for i in tqdm(range(num_models)):
 		compute_metrics = compute_hamming_metric,
 		preprocess_logits_for_metrics=preprocess_logits_for_metrics
 	)
+
 	model.train()
-	trainer.train()    
-	print ('training run completed')   
+	trainer.train()
+
+	print ('training run completed')
 	all_embeddings = model.all_embeddings
 	all_labels = model.all_labels  
 	all_embeddings = torch.cat(all_embeddings, dim=0) # (b*n) t e

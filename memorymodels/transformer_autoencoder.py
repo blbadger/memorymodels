@@ -413,6 +413,9 @@ class SecretTransformer(nn.Module):
         if self.original_embedding is None:
             self.original_embedding = split_hidden_states.detach()
         encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
+        global all_embeddings, all_labels
+        all_embeddings.append(encoder_embedding)
+        all_labels.append(labels)
 
         if self.compression:
             encoder_embedding = self.down(encoder_embedding)

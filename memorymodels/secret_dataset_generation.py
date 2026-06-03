@@ -149,7 +149,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path)
-test_dataset = load_from_disk(test_path)
+test_dataset = load_from_disk(test_path).take(1)
 
 global_batch_size = 64
 n_devices = 4
@@ -205,8 +205,8 @@ for i in tqdm(range(num_models)):
 		eval_dataset=test_dataset,
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-		# compute_metrics = compute_hamming_metric,
-		# preprocess_logits_for_metrics=preprocess_logits_for_metrics
+		compute_metrics = compute_hamming_metric,
+		preprocess_logits_for_metrics=preprocess_logits_for_metrics
 	)
 
 	model.train()
@@ -226,6 +226,7 @@ for i in tqdm(range(num_models)):
 	local_rank = int(os.environ.get("LOCAL_RANK", 0))
 	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}_{local_rank}")
 	model.all_embeddings, model.all_labels = [], []
+	del attributions_dict, all_labels, all_embeddings
 	print ('dataset updates')
 
 

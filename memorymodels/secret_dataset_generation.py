@@ -193,7 +193,7 @@ for i in tqdm(range(num_models)):
 		eval_strategy='steps',
 		output_dir=output_dir,
 		optim='adamw_torch',
-		max_steps=500,
+		max_steps=300,
 		save_steps=1000,
 		torch_compile=False,
 		report_to='none'
@@ -205,8 +205,8 @@ for i in tqdm(range(num_models)):
 		eval_dataset=test_dataset,
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-		compute_metrics = compute_hamming_metric,
-		preprocess_logits_for_metrics=preprocess_logits_for_metrics
+		# compute_metrics = compute_hamming_metric,
+		# preprocess_logits_for_metrics=preprocess_logits_for_metrics
 	)
 
 	model.train()
@@ -214,7 +214,7 @@ for i in tqdm(range(num_models)):
 
 	print ('training run completed')
 	all_embeddings = model.all_embeddings
-	all_labels = model.all_labels  
+	all_labels = model.all_labels
 	all_embeddings = torch.cat(all_embeddings, dim=0) # (b*n) t e
 	all_embeddings = list(torch.unbind(all_embeddings, dim=0))
 	all_labels = torch.cat(all_labels, dim=0)
@@ -223,7 +223,8 @@ for i in tqdm(range(num_models)):
 	attributions_dict = {'encodings': all_embeddings, 'ids': all_labels}
 	# print (attributions_dict)
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}")
+	local_rank = int(os.environ.get("LOCAL_RANK", 0))
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}_{local_rank}")
 	model.all_embeddings, model.all_labels = [], []
 	print ('dataset updates')
 

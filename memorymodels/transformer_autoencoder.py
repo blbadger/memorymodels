@@ -445,7 +445,7 @@ class SecretTransformer(nn.Module):
             #print (f'Cel loss: {loss}')
             #if self.random_label is None:
             self.random_label = torch.randint_like(labels, low=0, high=8000).to(labels.device).to(labels.dtype)
-            inversion_loss = self.cel(inverted_output, self.random_label)#-self.cel(inverted_output, labels) # cel near 0, we want maximum div
+            inversion_loss = self.cel(inverted_output, self.random_label) #-self.cel(inverted_output, labels) # cel near 0, we want maximum div
             #inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
             #print (f'Inversion loss: {inversion_loss}')
             embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)

@@ -18,6 +18,7 @@ import warnings
 import shutil
 from dotenv import load_dotenv
 from pathlib import Path
+from tqdm import tqdm
 
 from peft import LoraConfig, TaskType, get_peft_model
 
@@ -51,11 +52,11 @@ def compute_hamming_metric(eval_preds):
 	return {'Hamming Complement': hamming_metric}
 
 def preprocess_logits_for_metrics(logits, labels):
-    """
-    Original Trainer has a memory leak: a workaround to avoid saving all tensors
-    """
-    pred_ids = torch.argmax(logits, dim=-2)
-    return pred_ids, labels
+	"""
+	Original Trainer has a memory leak: a workaround to avoid saving all tensors
+	"""
+	pred_ids = torch.argmax(logits, dim=-2)
+	return pred_ids, labels
 
 
 def tokenize_and_preprocess(example):
@@ -67,10 +68,10 @@ def tokenize_and_preprocess(example):
 	return example
 
 def half_data(example):
-    example['input_ids'] = example['input_ids'][256:]
-    if 'attention_mask' in example:
-        example['attention_mask'] = example['attention_mask'][256:]
-    return example
+	example['input_ids'] = example['input_ids'][256:]
+	if 'attention_mask' in example:
+		example['attention_mask'] = example['attention_mask'][256:]
+	return example
 
 tokenizer = AutoTokenizer.from_pretrained(f'{data_root}/tokenizer_fineweb_8k')
 tokenizer.pad_token = tokenizer.eos_token
@@ -81,12 +82,12 @@ decoder_dim = 512
 n_layers = 16
 n_heads = 8
 encoder_config_kwargs = { 
-    'hidden_size': decoder_dim,
-    'intermediate_size': 4*decoder_dim,
-    'num_hidden_layers': n_layers,
-    'num_attention_heads': n_heads,
-    'vocab_size': vocab_size,
-    'max_position_embeddings': context_length
+	'hidden_size': decoder_dim,
+	'intermediate_size': 4*decoder_dim,
+	'num_hidden_layers': n_layers,
+	'num_attention_heads': n_heads,
+	'vocab_size': vocab_size,
+	'max_position_embeddings': context_length
 }
 
 encoder_configuration = LlamaConfig(**encoder_config_kwargs)
@@ -110,12 +111,12 @@ encoder_model.config.num_hidden_layers = 8
 n_layers = 8
 n_heads = 4
 decoder_config_kwargs = { 
-    'hidden_size': decoder_dim,
-    'intermediate_size': 4*decoder_dim,
-    'num_hidden_layers': n_layers,
-    'num_attention_heads': n_heads,
-    'vocab_size': vocab_size,
-    'max_position_embeddings': context_length
+	'hidden_size': decoder_dim,
+	'intermediate_size': 4*decoder_dim,
+	'num_hidden_layers': n_layers,
+	'num_attention_heads': n_heads,
+	'vocab_size': vocab_size,
+	'max_position_embeddings': context_length
 }
 
 decoder_configuration = LlamaConfig(**decoder_config_kwargs)
@@ -165,19 +166,21 @@ _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
 
 num_models = 1000
+
 global all_embeddings, all_labels
 all_embeddings, all_labels = [], []
-for i in range(num_models):
+
+for i in tqdm(range(num_models)):
 	model = SecretTransformer(
- 	vocab_size,
- 	decoder_dim,
-  	inversion_encoder,
-  	clm_decoder,
-  	split_model,
-  	inversion_decoder,
-  	wte=inversion_wte,
-  	clm_head=clm_head,
-  	inversion_head=inversion_head
+		vocab_size,
+		decoder_dim,
+		inversion_encoder,
+		clm_decoder,
+		split_model,
+		inversion_decoder,
+		wte=inversion_wte,
+		clm_head=clm_head,
+		inversion_head=inversion_head
 	) 
 	# train unique num_models, storing outputs from each
 	training_arguments = transformers.TrainingArguments(
@@ -193,8 +196,8 @@ for i in range(num_models):
 		output_dir=output_dir,
 		optim='adamw_torch',
 		max_steps=500,
-	    torch_compile=True,
-	    report_to=None
+		torch_compile=False,
+		report_to=None
 	)
 
 	trainer = transformers.Trainer(
@@ -208,10 +211,10 @@ for i in range(num_models):
 	)
 
 	attributions_dict = {'encodings': all_embeddings, 'ids': all_labels}
-   	# print (attributions_dict)
-    attributions_dataset = Dataset.from_dict(attributions_dict)
-    attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}")
-    all_embeddings, all_labels = []
+	# print (attributions_dict)
+	attributions_dataset = Dataset.from_dict(attributions_dict)
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}")
+	all_embeddings, all_labels = []
 
 	# save driver code snapshot in checkpoint dir
 	code_path = os.path.abspath(__file__)

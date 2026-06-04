@@ -36,6 +36,28 @@ data_root = os.getenv('DATA_ROOT')
 
 device = 'cuda' if torch.cuda.is_available else 'cpu'
 
+
+class SecretDecoder(nn.Module):
+
+    def __init__(self, n_vocab, dim, model, tokenized_length=512):
+        super().__init__()
+        self.model = model # assumes a LlamaModel
+        self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+        self.cel = nn.CrossEntropyLoss()
+        self.tokenized_length = tokenized_length
+
+    def forward(self, inputs_embeds, labels=None):
+        x = input_ids
+        x = x.to(device).squeeze(1)
+        x = self.model(inputs_embeds=x)
+
+        output = self.lm_head(x)
+        # no token shift
+        output = rearrange(output, 'b t e -> b e t')
+        loss = self.cel(output, labels)
+        return loss, output
+
+
 @torch.no_grad()
 def hamming(model_output, labels):
 	total_metric = 0
@@ -146,7 +168,7 @@ trainer = transformers.Trainer(
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments,
-	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	# data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 	compute_metrics = compute_hamming_metric,
 	preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )

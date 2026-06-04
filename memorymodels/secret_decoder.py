@@ -40,7 +40,7 @@ device = 'cuda' if torch.cuda.is_available else 'cpu'
 def hamming(model_output, labels):
 	total_metric = 0
 	# no shift for autoencoders
-	labels= torch.tensor(labels)
+	labels = torch.tensor(labels)
 	model_output = torch.tensor(model_output[0])
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
@@ -73,6 +73,14 @@ def half_data(example):
 		example['attention_mask'] = example['attention_mask'][256:]
 	return example
 
+# Define a minimal data collator to batch token-free tensors
+def embedding_data_collator(features):
+    batch = {
+        "inputs_embeds": torch.stack([f["inputs_embeds"] for f in features], dim=0),
+        "labels": torch.stack([f["labels"] for f in features], dim=0)
+    }
+    return batch
+
 tokenizer = AutoTokenizer.from_pretrained(f'{data_root}/tokenizer_fineweb_8k')
 tokenizer.pad_token = tokenizer.eos_token
 vocab_size = len(tokenizer)
@@ -91,23 +99,23 @@ encoder_config_kwargs = {
 }
 
 encoder_configuration = LlamaConfig(**encoder_config_kwargs)
-encoder_model = LlamaModel(encoder_configuration)
+model = LlamaForCausalLM(encoder_configuration)
 
-train_path = f"{data_root}/fineweb-edu-encodings"
-test_path = f"{data_root}/fineweb-edu-encodings"
+train_path = f"{data_root}/fineweb-edu-encodings/0_0"
+test_path = f"{data_root}/fineweb-edu-encodings/1_0"
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path).skip(5000)
-test_dataset = load_from_disk(test_path).take(5000)
+train_dataset = load_from_disk(train_path)#.skip(50o)
+test_dataset = load_from_disk(test_path)#.take(500)
 
 train_dataset = train_dataset.rename_column('encodings', 'inputs_embeds')
 train_dataset = train_dataset.rename_column('ids', 'labels')
 
 test_dataset = test_dataset.rename_column('encodings', 'inputs_embeds')
 test_dataset = test_dataset.rename_column('ids', 'labels')
-
-global_batch_size = 64
+print (train_dataset[0])
+global_batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -128,8 +136,8 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
-	eval_steps=4000,
-	logging_steps=500,
+	eval_steps=100,
+	logging_steps=50,
 	learning_rate=2e-4,
 	fp16=True,
 	eval_strategy='steps',
@@ -137,7 +145,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	max_steps=200000,
 	save_steps=8000,
-	torch_compile=True,
+	torch_compile=False,
 	report_to='none'
 )
 
@@ -146,7 +154,7 @@ trainer = transformers.Trainer(
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments,
-	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+#	data_collator=embedding_data_collator,
 	compute_metrics = compute_hamming_metric,
 	preprocess_logits_for_metrics=preprocess_logits_for_metrics
 )

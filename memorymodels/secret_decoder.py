@@ -6,7 +6,7 @@ import transformers
 from transformers import AutoTokenizer
 import mlflow
 
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, concatenate_datasets
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel
 from prettytable import PrettyTable
@@ -47,9 +47,9 @@ class SecretDecoder(nn.Module):
         self.tokenized_length = tokenized_length
 
     def forward(self, inputs_embeds, labels=None):
-        x = input_ids
+        x = inputs_embeds
         x = x.to(device).squeeze(1)
-        x = self.model(inputs_embeds=x)
+        x = self.model(inputs_embeds=x).last_hidden_state
 
         output = self.lm_head(x)
         # no token shift
@@ -122,22 +122,23 @@ encoder_config_kwargs = {
 
 encoder_configuration = LlamaConfig(**encoder_config_kwargs)
 model = LlamaModel(encoder_configuration)
-model = SecretModel(vocab_size, decoder_dim, model)
+model = SecretDecoder(vocab_size, decoder_dim, model)
 
-train_path = f"{data_root}/fineweb-edu-encodings/0_0"
-test_path = f"{data_root}/fineweb-edu-encodings/1_0"
+train_path = "{data_root}/fineweb-edu-encodings/{i}_0"
+test_path = f"{data_root}/fineweb-edu-encodings/20_0"
+
+train_dataset = concatenate_datasets([load_from_disk(train_path.format(data_root=data_root, i=i)) for i in range(10)])
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
-train_dataset = load_from_disk(train_path)#.skip(50o)
-test_dataset = load_from_disk(test_path)#.take(500)
+#train_dataset = load_from_disk(train_path)#.skip(50o)
+test_dataset = load_from_disk(test_path).skip(1000)
 
 train_dataset = train_dataset.rename_column('encodings', 'inputs_embeds')
 train_dataset = train_dataset.rename_column('ids', 'labels')
 
 test_dataset = test_dataset.rename_column('encodings', 'inputs_embeds')
 test_dataset = test_dataset.rename_column('ids', 'labels')
-print (train_dataset[0])
 global_batch_size = 16
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)

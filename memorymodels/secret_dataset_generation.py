@@ -166,7 +166,7 @@ _d{decoder_dim}\
 _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
 
-num_models = 1000
+num_models = 11
 
 for i in tqdm(range(num_models)):
 	model = SecretTransformer(
@@ -188,7 +188,7 @@ for i in tqdm(range(num_models)):
 		warmup_steps=50,
 		eval_steps=1000,
 		logging_steps=500,
-		learning_rate=2e-4,
+		learning_rate=5e-4,
 		fp16=True,
 		eval_strategy='steps',
 		output_dir=output_dir,
@@ -210,8 +210,8 @@ for i in tqdm(range(num_models)):
 	)
 
 	model.train()
-	trainer.train()
-
+	trainer.train()	
+	print (model.random_label)
 	print ('training run completed')
 	all_embeddings = model.all_embeddings
 	all_labels = model.all_labels
@@ -225,9 +225,9 @@ for i in tqdm(range(num_models)):
 	# print (attributions_dict)
 	attributions_dataset = Dataset.from_dict(attributions_dict)
 	local_rank = int(os.environ.get("LOCAL_RANK", 0))
-	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings/{i}_{local_rank}")
+	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings_condclm/{i}_{local_rank}")
 	model.all_embeddings, model.all_labels = [], []
-	del attributions_dict, all_labels, all_embeddings
-	print ('dataset updates')
+	del attributions_dict, all_labels, all_embeddings, model
+	print ('dataset updated, model removed')
 
 

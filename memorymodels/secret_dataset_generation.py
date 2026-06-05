@@ -167,7 +167,7 @@ _n{n_layers}\
 _c{context_length}_b{batch_size}x{n_devices}'
 
 num_models = 11
-
+local_rank = int(os.environ.get("LOCAL_RANK", 0))
 for i in tqdm(range(num_models)):
 	model = SecretTransformer(
 		vocab_size,
@@ -178,7 +178,8 @@ for i in tqdm(range(num_models)):
 		inversion_decoder,
 		wte=inversion_wte,
 		clm_head=clm_head,
-		inversion_head=inversion_head
+		inversion_head=inversion_head,
+		manual_seed=10*i + local_rank 
 	) 
 	# train unique num_models, storing outputs from each
 	training_arguments = transformers.TrainingArguments(
@@ -224,10 +225,9 @@ for i in tqdm(range(num_models)):
 	attributions_dict = {'encodings': all_embeddings, 'ids': all_labels}
 	# print (attributions_dict)
 	attributions_dataset = Dataset.from_dict(attributions_dict)
-	local_rank = int(os.environ.get("LOCAL_RANK", 0))
 	attributions_dataset.save_to_disk(f"{data_root}/fineweb-edu-encodings_condclm/{i}_{local_rank}")
 	model.all_embeddings, model.all_labels = [], []
-	del attributions_dict, all_labels, all_embeddings, model
+	del attributions_dict, all_labels, all_embeddings, model, trainer
 	print ('dataset updated, model removed')
 
 

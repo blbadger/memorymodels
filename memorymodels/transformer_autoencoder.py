@@ -360,7 +360,8 @@ class SecretTransformer(nn.Module):
         compression=1, 
         random=False, 
         freeze_decoders=True, 
-        noise_embeddings=False
+        noise_embeddings=False,
+        manual_seed=0
         ):
         super().__init__()
         self.wte = wte
@@ -397,7 +398,7 @@ class SecretTransformer(nn.Module):
         self.clm_head = clm_head
         self.original_embedding = None
         self.random_label = None
-
+        self.seed = manual_seed
         self.all_embeddings, self.all_labels = [], []
 
     def forward(self, input_ids, labels=None, attention_mask=None):
@@ -405,7 +406,7 @@ class SecretTransformer(nn.Module):
             x = torch.randint(1, self.n_vocab, input_ids.shape)
         else:
             x = input_ids
-
+        print (self.clm_head.weight[0, :5])
         x = input_ids.to(device).squeeze(1)
         split_hidden_states, output_hidden_states = self.split_model(input_ids=x)
         original_logits = self.clm_head(output_hidden_states)
@@ -445,7 +446,9 @@ class SecretTransformer(nn.Module):
             clm_loss = self.cel(clm_output, original_clm_tokens) # starts near 0
             print (f'Cel loss: {clm_loss}')
             if self.random_label is None:
+                torch.manual_seed(self.seed)
                 self.random_label = torch.randint_like(labels, low=0, high=8000).to(labels.device).to(labels.dtype)
+                print (self.random_label)
             inversion_loss = self.cel(inverted_output, self.random_label) #-self.cel(inverted_output, labels) # cel near 0, we want maximum div
             #inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
             print (f'Inversion loss: {inversion_loss}')

@@ -95,6 +95,8 @@ encoder_configuration = LlamaConfig(**encoder_config_kwargs)
 encoder_model = LlamaForCausalLM(encoder_configuration)
 
 load_model(encoder_model, f'{data_root}/fineweb_training/fineweb_llama_512_n16_h8_c512/checkpoint-200000/model.safetensors')
+original_clm = encoder_model
+
 clm_head = encoder_model.lm_head
 encoder_state_dict = encoder_model.model.state_dict()
 clm_wte = encoder_model.model.embed_tokens
@@ -106,6 +108,7 @@ encoder_model = encoder_model.model
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_configuration)
 clm_decoder.load_state_dict(encoder_state_dict)
+clm_head = clm_decoder
 
 encoder_model.config.num_hidden_layers = 8
 
@@ -139,9 +142,7 @@ inversion_encoder = model.encoder
 inversion_decoder = model.decoder
 inversion_wte = model.wte
 inversion_head = model.lm_head
-inversion_head=inversion_head
-
-	
+inversion_head = inversion_head
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
@@ -176,6 +177,7 @@ for i in tqdm(range(num_models)):
 		clm_decoder,
 		split_model,
 		inversion_decoder,
+		original_clm,
 		wte=inversion_wte,
 		clm_head=clm_head,
 		inversion_head=inversion_head,

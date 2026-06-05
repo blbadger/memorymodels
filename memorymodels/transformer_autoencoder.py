@@ -352,6 +352,7 @@ class SecretTransformer(nn.Module):
         clm_decoder, 
         split_model, 
         inversion_decoder, 
+        original_clm,
         wte=None, 
         clm_head=None, 
         inversion_head=None, 
@@ -368,6 +369,10 @@ class SecretTransformer(nn.Module):
         self.encoder = encoder_model
         self.clm_decoder = clm_decoder
         self.inversion_decoder = inversion_decoder
+        self.original_clm = original_clm
+        for _, param in self.original_clm.named_parameters():
+            param.requires_grad = False
+
         if freeze_decoders:
             for _, param in self.clm_decoder.named_parameters():
                 param.requires_grad = False
@@ -395,7 +400,11 @@ class SecretTransformer(nn.Module):
         self.noise_embeddings=noise_embeddings
         self.inversion_head=inversion_head
         self.split_model = split_model
+        
+        # specify pretrained causal lm head and freeze weights
         self.clm_head = clm_head
+        self.clm_head.param.requires_grad = False
+
         self.original_embedding = None
         self.random_label = None
         self.seed = manual_seed
@@ -408,12 +417,13 @@ class SecretTransformer(nn.Module):
             x = input_ids
         print (self.clm_head.weight[0, :5])
         x = input_ids.to(device).squeeze(1)
-        split_hidden_states, output_hidden_states = self.split_model(input_ids=x)
-        original_logits = self.clm_head(output_hidden_states)
+        split_hidden_states, _ = self.split_model(input_ids=x)
+        output_logits = self.original_clm(input_ids=x)
         original_clm_tokens = torch.argmax(original_logits, dim=-1)
 
         if self.original_embedding is None:
             self.original_embedding = split_hidden_states.detach()
+
         encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
         if self.training:
             self.all_embeddings.append(encoder_embedding.to('cpu'))

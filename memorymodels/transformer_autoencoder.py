@@ -98,7 +98,6 @@ class SuffixModel(LlamaModel):
         super().__init__(config)
         self.start_layer = 8
 
-    @torch.no_grad()
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,
@@ -403,7 +402,7 @@ class SecretTransformer(nn.Module):
         
         # specify pretrained causal lm head and freeze weights
         self.clm_head = clm_head
-        self.clm_head.param.requires_grad = False
+        self.clm_head.requires_grad = False
 
         self.original_embedding = None
         self.random_label = None
@@ -415,19 +414,18 @@ class SecretTransformer(nn.Module):
             x = torch.randint(1, self.n_vocab, input_ids.shape)
         else:
             x = input_ids
-        print (self.clm_head.weight[0, :5])
         x = input_ids.to(device).squeeze(1)
         split_hidden_states, _ = self.split_model(input_ids=x)
-        output_logits = self.original_clm(input_ids=x)
+        original_logits = self.original_clm(input_ids=x).logits
         original_clm_tokens = torch.argmax(original_logits, dim=-1)
 
         if self.original_embedding is None:
             self.original_embedding = split_hidden_states.detach()
 
         encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
-        if self.training:
-            self.all_embeddings.append(encoder_embedding.to('cpu'))
-            self.all_labels.append(labels.to('cpu'))
+        #if self.training:
+        #    self.all_embeddings.append(encoder_embedding.to('cpu'))
+        #    self.all_labels.append(labels.to('cpu'))
 
         if self.compression:
             encoder_embedding = self.down(encoder_embedding)
@@ -452,16 +450,17 @@ class SecretTransformer(nn.Module):
         clm_output = rearrange(clm_output, 'b t e -> b e t')
         inverted_output = rearrange(inverted_output, 'b t e -> b e t')
 
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))	
         if labels is not None:
             clm_loss = self.cel(clm_output, original_clm_tokens) # starts near 0
-            print (f'Cel loss: {clm_loss}')
             if self.random_label is None:
                 torch.manual_seed(self.seed)
                 self.random_label = torch.randint_like(labels, low=0, high=8000).to(labels.device).to(labels.dtype)
-                print (self.random_label)
             inversion_loss = self.cel(inverted_output, self.random_label) #-self.cel(inverted_output, labels) # cel near 0, we want maximum div
             #inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
-            print (f'Inversion loss: {inversion_loss}')
+            if local_rank == 0:
+                print (f'Cel loss: {clm_loss}')
+                print (f'Inversion loss: {inversion_loss}')
             #embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)
             #print (f'Embedding loss: {embedding_mse_loss}')
             loss = inversion_loss

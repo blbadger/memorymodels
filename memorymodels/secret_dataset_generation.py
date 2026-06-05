@@ -108,7 +108,6 @@ encoder_model = encoder_model.model
 # last 8 layers are the clm decoder
 clm_decoder = SuffixModel(encoder_configuration)
 clm_decoder.load_state_dict(encoder_state_dict)
-clm_head = clm_decoder
 
 encoder_model.config.num_hidden_layers = 8
 
@@ -191,13 +190,13 @@ for i in tqdm(range(num_models)):
 		warmup_steps=50,
 		eval_steps=1000,
 		logging_steps=500,
-		learning_rate=5e-4,
+		learning_rate=1e-4,
 		fp16=True,
 		eval_strategy='steps',
 		output_dir=output_dir,
 		optim='adamw_torch',
-		max_steps=300,
-		save_steps=1000,
+		max_steps=10000,
+		save_steps=20000,
 		torch_compile=False,
 		report_to='none'
 	)

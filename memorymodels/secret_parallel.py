@@ -48,19 +48,22 @@ class ParallelModel(nn.Module):
         self.cel = nn.CrossEntropyLoss()
         self.tokenized_length = tokenized_length
 
-    def forward(self, inputs_embeds, labels=None):
-        x = inputs_embeds
+    def forward(self, input_ids, labels=None, attention_mask=None):
+        x = input_ids
         x = x.to(device).squeeze(1)
-        large_stack_output = self.large_module(inputs_embeds=x).last_hidden_state
-        small_stack_output = self.small_module(inputs_embeds=x).last_hidden_state
+        large_stack_output = self.large_module(input_ids=x, attention_mask=attention_mask).last_hidden_state
+        small_stack_output = self.small_module(input_ids=x, attention_mask=attention_mask).last_hidden_state
 
         total_output = large_stack_output + small_stack_output
-        output = self.final_module(inputs_embeds=total_output)
+        output = self.final_module(inputs_embeds=total_output, attention_mask=attention_mask).last_hidden_state
 
-        output = self.lm_head(x)
-        # no token shift
+        output = self.lm_head(output)
+        if labels.dim() > 2:
+            labels = rearrange(labels, 'b p t -> b (p t)')
         output = rearrange(output, 'b t e -> b e t')
-        loss = self.cel(output, labels)
+        shift_logits = output[..., :-1].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = self.cel(shift_logits, shift_labels)
         return loss, output
 
 
@@ -146,7 +149,24 @@ encoder_config_kwargs = {
 
 small_module = LlamaModel(encoder_configuration)
 
-model = ParallelModel(vocab_size, decoder_dim, model)
+vocab_size = len(tokenizer)
+context_length = 512
+encoder_dim = 512
+decoder_dim = 512
+n_layers = 2
+n_heads = 4
+encoder_config_kwargs = { 
+	'hidden_size': decoder_dim,
+	'intermediate_size': 4*decoder_dim,
+	'num_hidden_layers': n_layers,
+	'num_attention_heads': n_heads,
+	'vocab_size': vocab_size,
+	'max_position_embeddings': context_length
+}
+
+end_module = LlamaModel(encoder_configuration)
+
+model = ParallelModel(vocab_size, decoder_dim, large_module, small_module, end_module)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
@@ -156,7 +176,7 @@ datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 
-global_batch_size = 128
+global_batch_size = 64
 n_devices = 4
 # get number of devices (assumes that all visible devices are used for training)
 if torch.cuda.is_available():
@@ -177,15 +197,15 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
-	eval_steps=100,
-	logging_steps=50,
+	eval_steps=4000,
+	logging_steps=500,
 	learning_rate=2e-4,
 	fp16=True,
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
-	max_steps=5000,
-	save_steps=1000,
+	max_steps=200000,
+	save_steps=8000,
 	torch_compile=True,
 	report_to='none'
 )
@@ -194,6 +214,7 @@ trainer = transformers.Trainer(
 	model=model,
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
+	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 	args=training_arguments,
 	compute_metrics = compute_hamming_metric,
 	preprocess_logits_for_metrics=preprocess_logits_for_metrics

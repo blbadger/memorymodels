@@ -109,8 +109,8 @@ vocab_size = len(tokenizer)
 context_length = 512
 encoder_dim = 512
 decoder_dim = 512
-n_layers = 16
-n_heads = 8
+n_layers = 8
+n_heads = 4
 encoder_config_kwargs = { 
 	'hidden_size': decoder_dim,
 	'intermediate_size': 4*decoder_dim,
@@ -124,13 +124,13 @@ encoder_configuration = LlamaConfig(**encoder_config_kwargs)
 model = LlamaModel(encoder_configuration)
 model = SecretDecoder(vocab_size, decoder_dim, model)
 
-train_path = "{data_root}/fineweb-edu-encodings/{i}_0"
-test_path = f"{data_root}/fineweb-edu-encodings/20_0"
+train_path = "{data_root}/fineweb-edu-encodings_condclm/{i}_0"
+test_path = f"{data_root}/fineweb-edu-encodings_condclm/10_0"
 
-train_dataset = concatenate_datasets([load_from_disk(train_path.format(data_root=data_root, i=i)) for i in range(10)])
 
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
+train_dataset = concatenate_datasets([load_from_disk(train_path.format(data_root=data_root, i=i)) for i in range(10)])
 #train_dataset = load_from_disk(train_path)#.skip(50o)
 test_dataset = load_from_disk(test_path).skip(1000)
 
@@ -167,8 +167,8 @@ training_arguments = transformers.TrainingArguments(
 	eval_strategy='steps',
 	output_dir=output_dir,
 	optim='adamw_torch',
-	max_steps=200000,
-	save_steps=8000,
+	max_steps=5000,
+	save_steps=1000,
 	torch_compile=False,
 	report_to='none'
 )

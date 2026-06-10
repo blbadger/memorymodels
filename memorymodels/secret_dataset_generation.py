@@ -137,11 +137,17 @@ model = AllAutoencodingTransformer(
 )
 
 load_model(model, f'{data_root}/fineweb_embedding_inverter_512_d512_n8_c512_b32x4/checkpoint-4000/model.safetensors')
+
+inversion_decoder =  LlamaForCausalLM(decoder_configuration)
+load_model(inversion_decoder, f'{data_root}/fineweb_secret_decoder_512_d512_n8_c512_b4x4/checkpoint-2000/model.safetensors')
+inversion_wte = inversion_decoder.model.embed_tokens
+inversion_head = inversion_decoder.lm_head
 inversion_encoder = model.encoder
-inversion_decoder = model.decoder
-inversion_wte = model.wte
-inversion_head = model.lm_head
-inversion_head = inversion_head
+inversion_decoder = inversion_decoder.model
+#inversion_decoder = model.decoder
+#inversion_wte = model.wte
+#inversion_head = model.lm_head
+#inversion_head = inversion_head
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
 test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
@@ -149,7 +155,7 @@ test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
 # load datasets and duplicate entries
 datasets.config.IN_MEMORY_MAX_SIZE = 5e9
 train_dataset = load_from_disk(train_path)
-test_dataset = load_from_disk(test_path).take(1)
+test_dataset = load_from_disk(test_path).take(12800)
 
 global_batch_size = 64
 n_devices = 4
@@ -188,14 +194,15 @@ for i in tqdm(range(num_models)):
 		per_device_train_batch_size=batch_size,
 		per_device_eval_batch_size=batch_size,
 		warmup_steps=50,
-		eval_steps=1000,
+		eval_steps=5000,
 		logging_steps=500,
-		learning_rate=1e-4,
+		learning_rate=2e-4,
 		fp16=True,
 		eval_strategy='steps',
 		output_dir=output_dir,
 		optim='adamw_torch',
-		max_steps=10000,
+		max_steps=5000,
+		save_strategy='no',
 		save_steps=20000,
 		torch_compile=False,
 		report_to='none'
@@ -213,6 +220,7 @@ for i in tqdm(range(num_models)):
 
 	model.train()
 	trainer.train()	
+	#trainer.evaluate()
 	print (model.random_label)
 	print ('training run completed')
 	all_embeddings = model.all_embeddings

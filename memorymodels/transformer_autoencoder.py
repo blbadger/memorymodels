@@ -423,9 +423,9 @@ class SecretTransformer(nn.Module):
             self.original_embedding = split_hidden_states.detach()
 
         encoder_embedding = split_hidden_states # dim=[batch, token, hidden]
-        #if self.training:
-        #    self.all_embeddings.append(encoder_embedding.to('cpu'))
-        #    self.all_labels.append(labels.to('cpu'))
+        if not self.training:
+            self.all_embeddings.append(encoder_embedding.to('cpu'))
+            self.all_labels.append(labels.to('cpu'))
 
         if self.compression:
             encoder_embedding = self.down(encoder_embedding)
@@ -456,17 +456,17 @@ class SecretTransformer(nn.Module):
             if self.random_label is None:
                 torch.manual_seed(self.seed)
                 self.random_label = torch.randint_like(labels, low=0, high=8000).to(labels.device).to(labels.dtype)
-            inversion_loss = self.cel(inverted_output, self.random_label) #-self.cel(inverted_output, labels) # cel near 0, we want maximum div
-            #inversion_loss = -self.cel(inverted_output, labels) # cel near 0, we want maximum div
+            #inversion_loss = self.cel(inverted_output, self.random_label) #-self.cel(inverted_output, labels) # cel near 0, we want maximum div
+            inversion_loss = torch.abs(9.-self.cel(inverted_output, labels)) # cel near 0, we want maximum div
             if local_rank == 0:
                 print (f'Cel loss: {clm_loss}')
                 print (f'Inversion loss: {inversion_loss}')
-            #embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)
+            embedding_mse_loss = self.mse(split_hidden_states, self.original_embedding)
             #print (f'Embedding loss: {embedding_mse_loss}')
-            loss = inversion_loss
-            if clm_loss.item() > 1.3:
-                print ('clm loss added')
-                loss += clm_loss
+            loss = inversion_loss + clm_loss
+            #if clm_loss.item() > 1.3:
+            #    print ('clm loss added')
+            #    loss += clm_loss
         else:
             loss = 0
         return loss, inverted_output

@@ -133,7 +133,7 @@ class AutoencodingMixer(nn.Module):
 				kernel = kernel
 				)
 			for i in range(depth)]
-	
+			)
 		self.decoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
@@ -329,7 +329,7 @@ class VariableMemoryMixer(nn.Module):
 					n_heads = 0, # no heads for decoder
 					kernel = 1  # unitary kernel
 					)
-				for i in range(depth)]
+				for i in range(depth)])
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if encoder_dim != dim:
 			self.decoder_proj = nn.Linear(encoder_dim, dim)
@@ -390,7 +390,7 @@ class VariableMemoryMixer(nn.Module):
 			pad = torch.zeros((input_ids.shape[0], self.n_chunks-c, input_embeddings.shape[2])).to(device)
 			x = torch.cat((embedding_array[:c] + [pad] + [decoder_embeds]), dim=1).contiguous() # concatenation on token dim
 		for block in self.decoderblocks:
-				x = block(x)
+			x = block(x)
 			
 			output = self.lm_head(x)
 			if labels.dim() > 2:

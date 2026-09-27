@@ -38,7 +38,7 @@ def hamming(model_output, labels):
 	total_metric = 0
 	# no shift for autoencoders
 	labels= torch.tensor(labels)
-	model_output = torch.tensor(model_output[0])
+	model_output = torch.tensor(model_output[0]) # model_output[1] is labels, somewhat confusingly
 	nonpad_tokens = torch.where(labels != -100, 1, 0)
 	equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
 	average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)

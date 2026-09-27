@@ -37,7 +37,7 @@ def hamming(model_output, labels):
         total_metric = 0 
         # no shift for autoencoders
         labels= torch.tensor(labels)
-        model_output = torch.tensor(model_output[0])
+        model_output = torch.tensor(model_output[0]) # model_output[1] is labels, somewhat confusingly
         nonpad_tokens = torch.where(labels != -100, 1, 0)
         equal_tokens = torch.where(model_output == labels, 1, 0) & nonpad_tokens
         average_metric = torch.sum(equal_tokens) / torch.sum(nonpad_tokens)
@@ -56,14 +56,14 @@ def preprocess_logits_for_metrics(logits, labels):
     return pred_ids, labels
 
 if __name__ == '__main__':
-    tokenized_length = 256
+    tokenized_length = 512
     encoder_dim = 512
     decoder_dim = 512
     n_layers = 8
     compression = 1
     heads = 0
     kernel = 1
-    n_vocab = 80000
+    n_vocab = 8000
 
     # mixer model initialization
     model = LanguageMixer(n_vocab, decoder_dim, 8, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
@@ -71,10 +71,10 @@ if __name__ == '__main__':
     encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
     encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=kernel, unroll=False, random=False)
 
-    encoder = encoder.model
+    #encoder = encoder.model
 
     #frozen_encoder = encoder.encoderblocks
-    frozen_encoder = TruncatedModel(encoder, autoencoder=True).model_blocks
+    frozen_encoder = TruncatedModel(encoder, autoencoder=True) #.model_blocks
     model = AutoencodingMixer(n_vocab, 
         encoder_dim, 
         n_layers, 
@@ -87,17 +87,17 @@ if __name__ == '__main__':
         frozen_encoder=frozen_encoder, 
         clm_encoder=False)  
 
-    safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors')
+    #safetensors.torch.load_model(encoder, '/home/azureuser/autoencoder_pretrained_retrieval/model.safetensors')
 
     train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
     test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
-    datasets.config.IN_MEMORY_MAX_SIZE = 50e9
+    #datasets.config.IN_MEMORY_MAX_SIZE = 50e9
     train_dataset = load_from_disk(train_path, keep_in_memory=None)
-    test_dataset = load_from_disk(test_path, keep_in_memory=None)
+    test_dataset = load_from_disk(test_path, keep_in_memory=None)[:100]
     mlflow.end_run()
 
-    batch_size = 32
+    batch_size = 16
     n_devices = 4
     # get number of devices (assumes that all visible devices are used for training)
     if torch.cuda.is_available():
@@ -105,11 +105,11 @@ if __name__ == '__main__':
 
     # descriptive name for output
     output_dir = f'{checkpoint_root}/fineweb_pretrainedauto_mixer\
-    _{encoder_dim}\
-    c{compression}\
-    _d{decoder_dim}\
-    _n{n_layers}\
-    _c{tokenized_length}_b{batch_size}x{n_devices}'
+_{encoder_dim}\
+c{compression}\
+_d{decoder_dim}\
+_n{n_layers}\
+_c{tokenized_length}_b{batch_size}x{n_devices}'
 
     training_arguments = transformers.TrainingArguments(
         num_train_epochs=3,
@@ -136,6 +136,8 @@ if __name__ == '__main__':
         eval_dataset=test_dataset,
         args=training_arguments,
         data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+    	compute_metrics=compute_hamming_metric,
+	preprocess_logits_for_metrics=preprocess_logits_for_metrics
     )
 
 

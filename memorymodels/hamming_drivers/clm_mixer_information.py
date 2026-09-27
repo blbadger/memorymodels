@@ -44,7 +44,7 @@ kernel = 1
 # mixer model initialization
 frozen_encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
 #frozen_encoder = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, compression=compression, n_heads=heads, kernel=16, unroll=True, random=False)
-safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
+#safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_training/fineweb_mixer_1024_n8_b32/checkpoint-200000/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/fineweb_mixer_autounroll_k16_1024c1_n8_c512_b32/model.safetensors')
 #safetensors.torch.load_model(frozen_encoder, '/home/bbadger/Desktop/retrieval/contrastive/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-70000/model.safetensors')
 #encoder = LanguageMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel).float().to(device)
@@ -67,8 +67,8 @@ model = AutoencodingMixer(n_vocab, encoder_dim, n_layers, tokenized_length, comp
 # model = RecurrentMemoryMixer(n_vocab, decoder_dim, n_layers, tokenized_length, n_heads=heads, kernel=kernel, n_chunks=8)
 
 print (model)
-train_path = f"{data_root}/fineweb-edu-tokenized-train-c512"
-test_path = f"{data_root}/fineweb-edu-tokenized-test-c512"
+train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
+test_path = f"{data_root}/fineweb-edu-tokenized-test-c512-8k"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
@@ -117,5 +117,5 @@ trainer = transformers.Trainer(
 	compute_loss_func=hamming_metric
 )
 
-safetensors.torch.load_model(model, output_dir + '/checkpoint-200000/model.safetensors')
+#safetensors.torch.load_model(model, output_dir + '/checkpoint-200000/model.safetensors')
 print (trainer.evaluate())

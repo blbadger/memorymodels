@@ -5,7 +5,6 @@ from einops import rearrange
 import transformers
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, LlamaModel
 from peft.peft_model import PeftModelForCausalLM
-import mlflow
 from datasets import load_dataset
 from mixer_autoencoder import MixerBlock
 

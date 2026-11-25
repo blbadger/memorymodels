@@ -7,7 +7,6 @@ from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalL
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.masking_utils import create_causal_mask
 import torch.nn as nn
-import mlflow
 from datasets import load_dataset
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -562,7 +561,6 @@ if __name__ == '__main__':
     if isinstance(model, LlamaForCausalLM):
         reformat_inputs(train_data, test_data)
 
-    mlflow.end_run()
     print ('training begun')
 
     training_arguments = transformers.TrainingArguments(
@@ -581,7 +579,8 @@ if __name__ == '__main__':
         optim='adamw_torch',
         overwrite_output_dir=True,
         save_safetensors=True,
-        torch_compile=True
+        torch_compile=True,
+        report_to=None
     )
 
     trainer = transformers.Trainer(

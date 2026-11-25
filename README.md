@@ -6,9 +6,9 @@ Code for the paper 'Language Model Memory and Memory Models for Language', found
 
 ### Quickstart
 
-To run this code using a GPU-accelerated node, spin up a venv, install dependencies via `uv pip install requirements.txt`, run the driver code in the `memorymodels` directory. Note that the requirements expect a CUDA device capability of at least 7.0, Python >=3.10, CUDA runtime major version of 12 and driver of at least 535.xxx.xx
+To run this code using a GPU-accelerated node, `uv` is recommended for package management. If you have uv installed, simply call driver code via `uv run torchrun ...` or `uv run accelerate ...`. If you wish to use a venv, initialize and install dependencies via `pip install -r requirements.txt` and call directly via `torchrun ...` or `accelerate launch ...`. Note that the requirements expect a CUDA device capability of at least 7.0, Python >=3.10, CUDA runtime major version of 12 and driver of at least 535.xxx.xx
 
-If you are developing locally, install the `local_reqs.txt` and run any tests you wish (for example `memorymodels/causal_test_bed.py` to check for causality).
+If you are developing locally without GPUs, install the `local_reqs.txt` and run any tests you wish (for example `memorymodels/causal_test_bed.py` to check for causality).
 
 Driver code typically uses the `transformers.trainer` utility which is handy for its compatibility with distributed training algorithms for saving model checkpoints, scheduling lrs, etc and is really just a sophisticated PyTorch wrapper. Note that the `trainer` does have a few long-standing bugs such that one occasionally needs to write a custom evaluation script or schedule, which is usually most straightforward to achieve via injecting a function rather than subclassing or making a branch and rewriting the library.
 

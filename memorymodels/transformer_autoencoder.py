@@ -580,7 +580,7 @@ if __name__ == '__main__':
         overwrite_output_dir=True,
         save_safetensors=True,
         torch_compile=True,
-        report_to=None
+        report_to='none'
     )
 
     trainer = transformers.Trainer(

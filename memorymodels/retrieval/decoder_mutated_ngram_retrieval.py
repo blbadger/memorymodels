@@ -101,12 +101,12 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		for i in range(batch_size):
 			start_index = random.randint(input_length - self.ngram_size)
 			sample_ngram = target_sample[start_index:start_index + self.ngram_size]
-			# mutate one token to make non-matching ngrams
+			# mutate one token to make non-matching ngrams, taking a random token from a different input
 			if i != target_index:
 				sample_ngram[ngram_index] = input_ids[i, start_index]
-		all_ngrams.append(sample_ngram)
-
-		return sample_index, ngram_inputs
+			all_ngrams.append(sample_ngram)
+		ngram_inputs = torch.stack(all_ngrams, dim=0).to(input_ids.device).to(input_id.dtype)
+		return target_index, ngram_inputs
 
 	@torch.no_grad()
 	def encode_inputs(self, input_ids):
@@ -119,7 +119,7 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			else:
 				x = autoencoder.encoder(x).last_hidden_state.to('cpu')
 
-		all_embeddings = torch.cat(all_embeddings, dim=0)
+		all_embeddings = torch.stack(all_embeddings, dim=0)
 		return all_embeddings
 
 
@@ -129,7 +129,6 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		input_ids = input_ids[0].repeat(batch_size)
 
 		sample_index, encoded_inputs = self.encode_mutated_ngrams(input_ids)
-		
 		all_indices.append(matching_index)
 		all_ngrams.append(sample_ngram)
 
@@ -156,7 +155,6 @@ def half_data(example):
 	if 'attention_mask' in example:
 		example['attention_mask'] = example['attention_mask'][256:]
 	return example
-
 
 if __name__ == '__main__':
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -226,9 +224,6 @@ if __name__ == '__main__':
 
 	#model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
-	datasets.config.IN_MEMORY_MAX_SIZE = 20 * 1024**3
-	rank = int(os.environ["RANK"])
-	world_size = int(os.environ["WORLD_SIZE"])
 	autoencoder = torch.compile(autoencoder).to(rank)
 	train_dataset = load_from_disk(train_path).map(half_data, batched=False, num_proc=16)
 	test_dataset = load_from_disk(test_path).map(half_data, batched=False, num_proc=16)
@@ -245,7 +240,7 @@ if __name__ == '__main__':
 		n_devices = torch.cuda.device_count()
 
 	# descriptive name for output
-	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_decoder_e32\
+	output_dir = f'{checkpoint_root}/fineweb_preauto_mutated_{ngram}gram_decoder\
 _{dim}\
 _n{n_layers}\
 _c{tokenized_length}_b{batch_size}x{n_devices}'

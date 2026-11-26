@@ -66,7 +66,7 @@ class RetrievalTransformer(nn.Module):
 
 class RetrievalAutoencoderTransformer(nn.Module):
 
-	def __init__(self, model, custom_decoder=None, embed_comparison=256, pad_token_id=1, padding_side='right', ngram_size=7, ngram_mutation=True):
+	def __init__(self, model, custom_decoder=None, encoder_batch_size=32, pad_token_id=1, padding_side='right', ngram_size=7, ngram_mutation=True):
 
 		super().__init__()
 		if not isinstance(model.encoder, LlamaModel):
@@ -90,39 +90,37 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		self.padding_side = padding_side
 		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = torch.nn.CrossEntropyLoss()
-		self.embed_comparison = embed_comparison
+		self.encoder_batch_size = encoder_batch_size
 
-
-	def encode_mutated_ngrams(self, input_ids):
-		# expects inputs to be of shape [b, t]
-		sample_index = random.randint(1, input_ids.shape[0]-1) # the first sample will be replaced with the input embedding
-		ngram_index = random.randint(0, input_ids.shape[1] - self.ngram_size)
-		sample_ngram = input_ids[sample_index, ngram_index: ngram_index + self.ngram_size]
-		
+	def convert_to_mutated_ngrams(self, input_ids):
 		batch_size = input_ids.shape[0]
-		x = input_ids[0].unsqueeze(0)
-		input_length = x.shape[1]
-		good_index = random.randint(batch_size)
-		if isinstance(autoencoder.encoder, AbbreviatedModel):
-			x = autoencoder.wte(x)
-			x = autoencoder.encoder(x).to('cpu')
-		else:
-			x = autoencoder.encoder(x).last_hidden_state.to('cpu')
-		for i in range(self.ngram_mutation):
+		input_length = input_ids.shape[1]
+		target_index = random.randint(batch_size)
+		target_sample = input_ids[target_index]
+		all_inputs = [target_sample]
+		for i in range(batch_size):
 			start_index = random.randint(input_length - self.ngram_size)
-			ngram = x[0, start_index:start_index + self.ngram_size]
-			if i != good_index:
-				ngram[random_] = random_token
+			sample_ngram = target_sample[start_index:start_index + self.ngram_size]
+			# mutate one token to make non-matching ngrams
+			if i != target_index:
+				sample_ngram[ngram_index] = input_ids[i, start_index]
+		all_ngrams.append(sample_ngram)
 
-		if self.padding_side == 'right':
-			sample_ngram = torch.cat((sample_ngram, pad_ngram), dim=0)
-			attention_ngram = torch.cat((torch.ones(self.ngram_size, dtype=torch.long), torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
-		elif self.padding_side == 'left':
-			sample_ngram = torch.cat((pad_ngram, sample_ngram), dim=0)
-			attention_ngram = torch.cat((torch.zeros(input_ids.shape[1] - self.ngram_size, dtype=torch.long), torch.ones(self.ngram_size, dtype=torch.long)), dim=0).to(input_ids.device)
+		return sample_index, ngram_inputs
 
+	@torch.no_grad()
+	def encode_inputs(self, input_ids):
+		encoder_batches = input_ids.shape[0] // self.encoder_batch_size
+		all_embeddings = 
+		for batch in encoder_batches:
+			if isinstance(autoencoder.encoder, AbbreviatedModel):
+				x = autoencoder.wte(x)
+				x = autoencoder.encoder(x).to('cpu')
+			else:
+				x = autoencoder.encoder(x).last_hidden_state.to('cpu')
 
-		return sample_index, encoded_inputs
+		all_embeddings = torch.cat(all_embeddings, dim=0)
+		return all_embeddings
 
 
 	def forward(self, input_ids, attention_mask, labels=None, **kwargs):
@@ -131,23 +129,13 @@ class RetrievalAutoencoderTransformer(nn.Module):
 		input_ids = input_ids[0].repeat(batch_size)
 
 		sample_index, encoded_inputs = self.encode_mutated_ngrams(input_ids)
-
 		
 		all_indices.append(matching_index)
 		all_ngrams.append(sample_ngram)
 
-		all_ngrams = torch.stack((all_ngrams), dim=0).to(input_ids.device)
+		sample_index, input_ids = self.convert_to_mutated_ngrams(input_ids)
+		embeddings = self.encode_inputs(input_ids)
 
-		if self.wte:
-			all_ngrams = self.wte(all_ngrams)
-		sample_embeddings = self.encoder(all_ngrams).last_hidden_state
-		sample_embeddings = sample_embeddings[:, -1, :] 
-		embedding_swap_indices = [n*self.embed_comparison for n in range(n_microbatches)]
-		embeddings[embedding_swap_indices] = sample_embeddings
-
-		# reshape embeddings into minibatches
-		embeddings = rearrange(embeddings, '(b c) h -> b c h', c=self.embed_comparison)
-		
 		# label reassignment
 		labels = torch.tensor(all_indices, dtype=torch.long).unsqueeze(1).to(input_ids.device)
 		if isinstance(self.decoder, AbbreviatedModel):
@@ -156,7 +144,9 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			output = self.decoder(inputs_embeds=embeddings).last_hidden_state # assumes a LlamaModel
 		output = self.retrieval_head(output)
 		if not self.training:
-			loss = torch.sum((torch.argmax(output) == all_indices).to(torch.long)) / n_microbatches
+			predicted_matches = torch.argmax(output, dim=1)
+			correct_samples = torch.where(predicted_matches==labels, 1, 0).to(torch.long)
+			loss = torch.sum(correct_samples)
 		else:
 			loss = self.cel(output, labels)
 		return loss, output
@@ -166,7 +156,6 @@ def half_data(example):
 	if 'attention_mask' in example:
 		example['attention_mask'] = example['attention_mask'][256:]
 	return example
-
 
 
 if __name__ == '__main__':

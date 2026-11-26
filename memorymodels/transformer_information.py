@@ -113,7 +113,7 @@ llama_config_kwargs = {
 
 decoder_configuration = LlamaConfig(**llama_config_kwargs)
 encoder_model = model.encoder
-decoder_model = LlamaForCausalLM(configuration)
+decoder_model = LlamaModel(configuration)
 model = UnrolledAutoencodingTransformer(vocab_size, decoder_dim, encoder_model, decoder_model, tokenized_length=context_length, compression=compression, freeze_encoder=True)
 
 train_path = f"{data_root}/fineweb-edu-tokenized-train-c512-8k"
@@ -143,7 +143,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=batch_size,
 	per_device_eval_batch_size=batch_size,
 	warmup_steps=500,
-	eval_steps=500,
+	eval_steps=2000,
 	logging_steps=500,
 	save_steps=4000,
 	learning_rate=2e-4,

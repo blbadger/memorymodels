@@ -150,7 +150,7 @@ def half_data(example):
 
 @torch.no_grad()
 def embed_data(example):
-	x = torch.tensor(example['input_ids']).to(device)
+	x = torch.tensor(example['input_ids']).to(rank)
 	if isinstance(autoencoder.encoder, AbbreviatedModel):
 		x = autoencoder.wte(x)
 		x = autoencoder.encoder(x).to('cpu')
@@ -181,7 +181,7 @@ if __name__ == '__main__':
 	n_layers = 16
 	n_heads = 4
 	n_context = tokenized_length
-	ngram = 7
+	ngram = 4
 
 	vocab_size = len(tokenizer)
 	llama_config_kwargs = {
@@ -229,8 +229,11 @@ if __name__ == '__main__':
 
 	#model = RetrievalAutoencoderTransformer(autoencoder, custom_decoder=decoder, ngram_size=ngram, embed_comparison=embed_comparison, padding_side='right', pad_token_id=tokenizer.pad_token_id).to(device)
 
-	datasets.config.IN_MEMORY_MAX_SIZE = 1e9 
-	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64) # 1000000
+	datasets.config.IN_MEMORY_MAX_SIZE = 20 * 1024**3
+	rank = int(os.environ["RANK"])
+	world_size = int(os.environ["WORLD_SIZE"])
+	model = model.to(rank)
+	train_dataset = load_from_disk(train_path).take(4000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64) # 1000000
 	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
 	
 	tokenizer.pad_token = tokenizer.eos_token
@@ -245,7 +248,7 @@ if __name__ == '__main__':
 		n_devices = torch.cuda.device_count()
 
 	# descriptive name for output
-	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_decoder\
+	output_dir = f'{checkpoint_root}/fineweb_pretrainedclm_{ngram}gram_decoder_e32\
 _{dim}\
 _n{n_layers}\
 _c{tokenized_length}_b{batch_size}x{n_devices}'
@@ -267,7 +270,8 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
-		torch_compile=True
+		torch_compile=True,
+                report_to='none'
 	)
 
 	trainer = transformers.Trainer(

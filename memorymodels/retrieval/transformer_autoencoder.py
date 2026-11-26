@@ -5,7 +5,6 @@ from einops import rearrange
 import transformers
 from transformers import AutoTokenizer, LlamaConfig, LlamaModel, LlamaForCausalLM
 import torch.nn as nn
-import mlflow
 from datasets import load_dataset
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -259,7 +258,6 @@ if __name__ == '__main__':
         if isinstance(model, LlamaForCausalLM):
                 reformat_inputs(train_data, test_data)
 
-        mlflow.end_run()
         print ('training begun')
 
         training_arguments = transformers.TrainingArguments(
@@ -275,7 +273,8 @@ if __name__ == '__main__':
                 output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
                 optim='adamw_torch',
                 overwrite_output_dir=True,
-                save_safetensors=True
+                save_safetensors=True,
+                report_to='none'
         )
 
         trainer = transformers.Trainer(

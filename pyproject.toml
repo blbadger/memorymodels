@@ -202,7 +202,7 @@ dependencies = [
     "torchaudio==2.6.0",
     "torchvision==0.21.0",
     "tqdm==4.66.4",
-    "transformers==4.50.0",
+    "transformers==4.53.0",
     "triton==3.2.0",
     "trl==0.15.2",
     "twisted==22.1.0",

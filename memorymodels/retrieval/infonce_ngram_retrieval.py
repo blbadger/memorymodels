@@ -241,6 +241,7 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		overwrite_output_dir=True,
 		save_safetensors=True,
 		max_steps=200000,
+                report_to='none',
 	#	torch_compile=True
 	)
 

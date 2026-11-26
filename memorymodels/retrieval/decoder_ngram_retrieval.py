@@ -150,7 +150,8 @@ def half_data(example):
 
 @torch.no_grad()
 def embed_data(example):
-	x = torch.tensor(example['input_ids']).to(rank)
+	x = torch.tensor(example['input_ids'])
+	x = x.to(rank)
 	if isinstance(autoencoder.encoder, AbbreviatedModel):
 		x = autoencoder.wte(x)
 		x = autoencoder.encoder(x).to('cpu')
@@ -233,8 +234,8 @@ if __name__ == '__main__':
 	rank = int(os.environ["RANK"])
 	world_size = int(os.environ["WORLD_SIZE"])
 	model = model.to(rank)
-	train_dataset = load_from_disk(train_path).take(4000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64) # 1000000
-	test_dataset = load_from_disk(test_path).take(1000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=64)
+	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=True, batch_size=32, num_proc=1).map(embed_data, batched=True, batch_size=64) # 1000000
+	test_dataset = load_from_disk(test_path).take(40000).map(half_data, batched=False, batch_size=32, num_proc=1).map(embed_data, batched=True, batch_size=64)
 	
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
@@ -271,7 +272,7 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		save_safetensors=True,
 		max_steps=200000,
 		torch_compile=True,
-                report_to='none'
+        report_to='none'
 	)
 
 	trainer = transformers.Trainer(

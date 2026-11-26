@@ -137,7 +137,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 			output = self.decoder(inputs_embeds=embeddings).last_hidden_state # assumes a LlamaModel
 		output = self.retrieval_head(output)
 		if not self.training:
-			loss = torch.sum((torch.argmax(output) == all_indices).to(torch.long)) / n_microbatches
+			# top-1 retrieval accuracy metric
+			predicted_matches = torch.argmax(output, dim=1)
+			correct_samples = torch.where(predicted_matches==labels, 1, 0).to(torch.long)
+			loss = torch.sum(correct_samples) / n_microbatches
 		else:
 			loss = self.cel(output, labels)
 		return loss, output
@@ -233,8 +236,8 @@ if __name__ == '__main__':
 	rank = int(os.environ["RANK"])
 	world_size = int(os.environ["WORLD_SIZE"])
 	autoencoder = torch.compile(autoencoder).to(rank)
-	train_dataset = load_from_disk(train_path).take(100000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=256) # 1000000
-	test_dataset = load_from_disk(test_path).take(10000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=256)
+	train_dataset = load_from_disk(train_path).take(1000000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=256) # 1000000
+	test_dataset = load_from_disk(test_path).take(20000).map(half_data, batched=False, num_proc=16).map(embed_data, batched=True, batch_size=256)
 	
 	tokenizer.pad_token = tokenizer.eos_token
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
@@ -259,7 +262,7 @@ _c{tokenized_length}_b{batch_size}x{n_devices}'
 		per_device_eval_batch_size=total_sample_size,
 		gradient_accumulation_steps=1,
 		warmup_steps=500,
-		eval_steps=1000,
+		eval_steps=10,
 		save_steps=10000,
 		logging_steps=500,
 		learning_rate=1e-4,
